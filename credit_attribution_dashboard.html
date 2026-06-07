@@ -8,7 +8,8 @@
 <style>
 :root{--bg:#0f1117;--bg2:#181c25;--bg3:#1e2330;--bdr:rgba(255,255,255,.08);
   --t:#e8eaf0;--t2:#8b90a0;--t3:#5a5f70;
-  --ig:#185FA5;--hy:#993C1D;--rate:#534AB7;--spread:#1D9E75;--carry:#BA7517;--convex:#9E3D9E;
+  --ig:#185FA5;--hy:#993C1D;
+  --rate:#534AB7;--rate2:#8B80E0;--spread:#1D9E75;--carry:#BA7517;--convex:#9E3D9E;
   --pos:#1D9E75;--neg:#C94040;--r:10px;
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 *{box-sizing:border-box;margin:0;padding:0}
@@ -20,8 +21,9 @@ h1{font-size:18px;font-weight:500;margin-bottom:4px}
 .badge-yf{background:rgba(83,74,183,.15);color:#534AB7}
 .badge-sim{background:rgba(186,117,23,.15);color:#BA7517}
 .formula{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);
-  padding:10px 16px;font-size:12px;color:var(--t2);margin-bottom:1.25rem;line-height:2.1}
+  padding:10px 16px;font-size:12px;color:var(--t2);margin-bottom:1.25rem;line-height:2.2}
 .formula code{font-family:"SF Mono","Fira Code",monospace;color:var(--t);font-size:12px}
+.krd-note{font-size:11px;color:var(--t3);margin-top:6px}
 .weight-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem}
 .wc{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem}
 .wc-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
@@ -30,14 +32,16 @@ h1{font-size:18px;font-weight:500;margin-bottom:4px}
 .wc-pct{font-size:22px;font-weight:500;margin:6px 0 8px}
 .slider{width:100%;margin-bottom:10px}
 .wc-meta{font-size:12px;color:var(--t2);margin-bottom:10px}
-.ab{margin:6px 0}
+.ab{margin:5px 0}
 .ab-row{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-bottom:3px}
-.ab-track{height:5px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.ab-track{height:4px;background:var(--bg3);border-radius:3px;overflow:hidden}
 .ab-fill{height:100%;border-radius:3px;transition:width .35s}
-.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(138px,1fr));gap:10px;margin-bottom:1.25rem}
-.mc{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:13px 15px}
-.mc-lbl{font-size:11px;color:var(--t2);margin-bottom:6px}
-.mc-val{font-size:19px;font-weight:500}
+.ab-sub{margin-left:10px}
+.ab-sub .ab-track{height:3px;opacity:.6}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.25rem}
+.mc{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:12px 14px}
+.mc-lbl{font-size:11px;color:var(--t2);margin-bottom:5px}
+.mc-val{font-size:18px;font-weight:500}
 .mc-sub{font-size:11px;margin-top:3px}
 .pos{color:var(--pos)}.neg{color:var(--neg)}
 .panel{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:1rem}
@@ -51,51 +55,61 @@ h1{font-size:18px;font-weight:500;margin-bottom:4px}
 #chartDiv{width:100%;height:280px}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{font-size:11px;font-weight:500;color:var(--t2);text-align:left;padding:5px 8px;border-bottom:.5px solid var(--bdr)}
-td{padding:7px 8px;border-bottom:.5px solid var(--bdr)}
+td{padding:6px 8px;border-bottom:.5px solid var(--bdr)}
 tr:last-child td{border-bottom:none;font-weight:500}
+.sub-row td{color:var(--t2);font-size:11px;padding:3px 8px 5px}
+.sub-row td:first-child{padding-left:20px}
 .mono{font-family:"SF Mono","Fira Code",monospace;font-size:11px;color:var(--t2)}
 .note{font-size:11px;color:var(--t3);margin-top:.75rem}
 </style>
 </head>
 <body>
-<h1>Fixed income portfolio attribution <span class="badge badge-yf" id="dataBadge">live · FRED + yf</span></h1>
-<p class="sub">LQD (IG) &nbsp;·&nbsp; HYG (HY) &nbsp;·&nbsp; 2025-01-01 – 2026-06-06 &nbsp;·&nbsp; Campisi framework with convexity</p>
+<h1>Fixed income portfolio attribution <span class="badge badge-yf">live · FRED+yf</span></h1>
+<p class="sub">LQD (IG) &nbsp;·&nbsp; HYG (HY) &nbsp;·&nbsp; 2025-01-01 – 2026-06-07 &nbsp;·&nbsp; Campisi + Key Rate Duration</p>
 
 <div class="formula">
-  Portfolio return = w<sub>LQD</sub>&thinsp;·&thinsp;R<sub>LQD</sub> + w<sub>HYG</sub>&thinsp;·&thinsp;R<sub>HYG</sub>
-  &nbsp;&nbsp;·&nbsp;&nbsp; R = <code>Rate</code> + <code>Spread</code> + <code>Carry</code> + <code>Convexity</code><br>
-  <code>Spread = −Duration × ΔOAS</code> &nbsp;·&nbsp;
-  <code>Rate = −Duration × Δr</code> &nbsp;·&nbsp;
-  <code>Carry = coupon ÷ n</code> &nbsp;·&nbsp;
-  <code>Convexity = ½ · C · (Δr + ΔOAS)²</code>
+  R = <code>Rate</code> + <code>Spread</code> + <code>Carry</code> + <code>Convexity</code><br>
+  <code>Rate = −KRD<sub>near</sub> × Δr<sub>near</sub> − KRD<sub>far</sub> × Δr<sub>far</sub></code>
+  &nbsp;·&nbsp; <code>Spread = −Duration × ΔOAS</code>
+  &nbsp;·&nbsp; <code>Carry = coupon ÷ 52</code>
+  &nbsp;·&nbsp; <code>Convexity = ½ · C · (Δr̄ + ΔOAS)²</code><br>
+  <span class="krd-note">
+    LQD nodes: KRD<sub>5y</sub> = 7.26 &nbsp;·&nbsp; KRD<sub>30y</sub> = 1.14
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    HYG nodes: KRD<sub>2y</sub> = 1.23 &nbsp;·&nbsp; KRD<sub>5y</sub> = 2.87
+  </span>
 </div>
 
 <div class="weight-row">
   <div class="wc">
     <div class="wc-header">
       <span class="wc-name" style="color:var(--ig)">LQD</span>
-      <span class="wc-tag" style="background:rgba(24,95,165,.12);color:var(--ig)">Investment grade</span>
+      <span class="wc-tag" style="background:rgba(24,95,165,.12);color:var(--ig)">Investment grade · DGS5 + DGS30</span>
     </div>
     <div class="wc-pct" style="color:var(--ig)" id="lqdPct">60%</div>
     <input class="slider" type="range" min="0" max="100" value="60" id="lqdSlider" oninput="onSlider('lqd',this.value)">
-    <div class="wc-meta">Dur: 8.4y &nbsp;·&nbsp; Coupon: ~4.8% &nbsp;·&nbsp; Convexity: 82</div>
-    <div id="lqd-a-spread" class="ab"></div>
-    <div id="lqd-a-carry"  class="ab"></div>
-    <div id="lqd-a-rate"   class="ab"></div>
-    <div id="lqd-a-convex" class="ab"></div>
+    <div class="wc-meta">Dur: 8.4y · Coupon: ~4.8% · Convexity: 82</div>
+    <div id="lqd-a-spread"    class="ab"></div>
+    <div id="lqd-a-carry"     class="ab"></div>
+    <div id="lqd-a-rate"      class="ab"></div>
+    <div id="lqd-a-rate-near" class="ab ab-sub"></div>
+    <div id="lqd-a-rate-far"  class="ab ab-sub"></div>
+    <div id="lqd-a-convex"    class="ab"></div>
   </div>
   <div class="wc">
     <div class="wc-header">
       <span class="wc-name" style="color:var(--hy)">HYG</span>
-      <span class="wc-tag" style="background:rgba(153,60,29,.12);color:var(--hy)">High yield</span>
+      <span class="wc-tag" style="background:rgba(153,60,29,.12);color:var(--hy)">High yield · DGS2 + DGS5</span>
     </div>
     <div class="wc-pct" style="color:var(--hy)" id="hygPct">40%</div>
     <input class="slider" type="range" min="0" max="100" value="40" id="hygSlider" oninput="onSlider('hyg',this.value)">
-    <div class="wc-meta">Dur: 4.1y &nbsp;·&nbsp; Coupon: ~7.2% &nbsp;·&nbsp; Convexity: 22</div>
-    <div id="hyg-a-spread" class="ab"></div>
-    <div id="hyg-a-carry"  class="ab"></div>
-    <div id="hyg-a-rate"   class="ab"></div>
-    <div id="hyg-a-convex" class="ab"></div>
+    <div class="wc-meta">Dur: 4.1y · Coupon: ~7.2% · Convexity: 22</div>
+    <div id="hyg-a-spread"    class="ab"></div>
+    <div id="hyg-a-carry"     class="ab"></div>
+    <div id="hyg-a-rate"      class="ab"></div>
+    <div id="hyg-a-rate-near" class="ab ab-sub"></div>
+    <div id="hyg-a-rate-far"  class="ab ab-sub"></div>
+    <div id="hyg-a-convex"    class="ab"></div>
   </div>
 </div>
 
@@ -107,21 +121,25 @@ tr:last-child td{border-bottom:none;font-weight:500}
     <button class="tab active" onclick="switchTab('cum',this)">Cumulative attribution</button>
     <button class="tab" onclick="switchTab('weekly',this)">Weekly stacked</button>
     <button class="tab" onclick="switchTab('oas',this)">OAS levels</button>
-    <button class="tab" onclick="switchTab('rate',this)">10y yield</button>
+    <button class="tab" onclick="switchTab('curve',this)">Yield curve</button>
   </div>
   <div class="legend" id="legCum">
-    <span><span class="ld" style="background:var(--rate)"></span>Rate</span>
+    <span><span class="ld" style="background:#d0d4e0"></span>Total (bold)</span>
+    <span><span class="ld" style="background:var(--rate)"></span>Rate total</span>
     <span><span class="ld" style="background:var(--spread)"></span>Spread</span>
     <span><span class="ld" style="background:var(--carry)"></span>Carry</span>
     <span><span class="ld" style="background:var(--convex)"></span>Convexity</span>
-    <span><span class="ld" style="background:#888"></span>Total</span>
+    <span><span class="ld" style="background:var(--rate2);opacity:.8"></span>Rate near ···</span>
+    <span><span class="ld" style="background:#9080FF;opacity:.8"></span>Rate far -·-</span>
   </div>
   <div class="legend" id="legOas" style="display:none">
     <span><span class="ld" style="background:var(--ig)"></span>LQD OAS (bp)</span>
     <span><span class="ld" style="background:var(--hy)"></span>HYG OAS (bp)</span>
   </div>
-  <div class="legend" id="legRate" style="display:none">
-    <span><span class="ld" style="background:var(--rate)"></span>US 10y yield (%)</span>
+  <div class="legend" id="legCurve" style="display:none">
+    <span><span class="ld" style="background:#4A9EFF"></span>2y yield</span>
+    <span><span class="ld" style="background:var(--rate)"></span>5y yield</span>
+    <span><span class="ld" style="background:#E05050"></span>30y yield</span>
   </div>
   <div id="chartDiv"></div>
 </div>
@@ -135,66 +153,78 @@ tr:last-child td{border-bottom:none;font-weight:500}
     </tr></thead>
     <tbody id="summaryTbody"></tbody>
   </table>
-  <p class="note">Source: FRED (OAS) + yfinance (^TNX) &nbsp;·&nbsp; Generated 2026-06-06</p>
+  <p class="note">Source: FRED (OAS) + yfinance/FRED (yields) &nbsp;·&nbsp; Generated 2026-06-07</p>
 </div>
 
 <script>
-const DATA = {"labels": ["Jan 10", "Jan 17", "Jan 24", "Jan 31", "Feb 07", "Feb 14", "Feb 21", "Feb 28", "Mar 07", "Mar 14", "Mar 21", "Mar 28", "Apr 04", "Apr 11", "Apr 18", "Apr 25", "May 02", "May 09", "May 16", "May 23", "May 30", "Jun 06", "Jun 13", "Jun 20", "Jun 27", "Jul 04", "Jul 11", "Jul 18", "Jul 25", "Aug 01", "Aug 08", "Aug 15", "Aug 22", "Aug 29", "Sep 05", "Sep 12", "Sep 19", "Sep 26", "Oct 03", "Oct 10", "Oct 17", "Oct 24", "Oct 31", "Nov 07", "Nov 14", "Nov 21", "Nov 28", "Dec 05", "Dec 12", "Dec 19", "Dec 26", "Jan 02", "Jan 09", "Jan 16", "Jan 23", "Jan 30", "Feb 06", "Feb 13", "Feb 20", "Feb 27", "Mar 06", "Mar 13", "Mar 20", "Mar 27", "Apr 03", "Apr 10", "Apr 17", "Apr 24", "May 01", "May 08", "May 15", "May 22", "May 29", "Jun 05"], "oas_dates": ["2025-01-10", "2025-01-17", "2025-01-24", "2025-01-31", "2025-02-07", "2025-02-14", "2025-02-21", "2025-02-28", "2025-03-07", "2025-03-14", "2025-03-21", "2025-03-28", "2025-04-04", "2025-04-11", "2025-04-18", "2025-04-25", "2025-05-02", "2025-05-09", "2025-05-16", "2025-05-23", "2025-05-30", "2025-06-06", "2025-06-13", "2025-06-20", "2025-06-27", "2025-07-04", "2025-07-11", "2025-07-18", "2025-07-25", "2025-08-01", "2025-08-08", "2025-08-15", "2025-08-22", "2025-08-29", "2025-09-05", "2025-09-12", "2025-09-19", "2025-09-26", "2025-10-03", "2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21", "2025-11-28", "2025-12-05", "2025-12-12", "2025-12-19", "2025-12-26", "2026-01-02", "2026-01-09", "2026-01-16", "2026-01-23", "2026-01-30", "2026-02-06", "2026-02-13", "2026-02-20", "2026-02-27", "2026-03-06", "2026-03-13", "2026-03-20", "2026-03-27", "2026-04-03", "2026-04-10", "2026-04-17", "2026-04-24", "2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29", "2026-06-05"], "lqd_oas": [83.0, 82.0, 80.0, 82.0, 84.0, 80.0, 81.0, 88.0, 89.0, 94.0, 92.0, 94.0, 114.0, 118.0, 111.0, 104.0, 106.0, 102.0, 93.0, 93.0, 91.0, 87.0, 88.0, 88.0, 88.0, 80.0, 83.0, 80.0, 78.0, 82.0, 80.0, 75.0, 77.0, 80.0, 79.0, 77.0, 74.0, 75.0, 75.0, 81.0, 80.0, 77.0, 80.0, 84.0, 83.0, 86.0, 82.0, 79.0, 80.0, 80.0, 79.0, 79.0, 78.0, 75.0, 73.0, 74.0, 76.0, 79.0, 78.0, 85.0, 84.0, 93.0, 88.0, 91.0, 86.0, 82.0, 80.0, 80.0, 81.0, 79.0, 75.0, 74.0, 73.0, 74.0], "hyg_oas": [281.0, 264.0, 260.0, 268.0, 267.0, 262.0, 278.0, 287.0, 297.0, 325.0, 321.0, 347.0, 445.0, 426.0, 402.0, 367.0, 360.0, 353.0, 316.0, 340.0, 331.0, 309.0, 318.0, 313.0, 302.0, 280.0, 297.0, 293.0, 284.0, 313.0, 294.0, 288.0, 288.0, 282.0, 283.0, 279.0, 272.0, 275.0, 280.0, 318.0, 304.0, 288.0, 294.0, 315.0, 307.0, 319.0, 295.0, 285.0, 291.0, 290.0, 286.0, 283.0, 274.0, 265.0, 268.0, 280.0, 287.0, 295.0, 286.0, 310.0, 313.0, 328.0, 324.0, 342.0, 313.0, 294.0, 283.0, 286.0, 277.0, 281.0, 280.0, 274.0, 272.0, 274.0], "rate_10y": [4.776, 4.609, 4.626, 4.569, 4.487, 4.472, 4.42, 4.231, 4.317, 4.308, 4.252, 4.255, 3.985, 4.493, 4.333, 4.266, 4.322, 4.375, 4.441, 4.509, 4.416, 4.51, 4.424, 4.375, 4.283, 4.348, 4.423, 4.432, 4.386, 4.22, 4.285, 4.328, 4.26, 4.227, 4.086, 4.061, 4.139, 4.187, 4.119, 4.051, 4.007, 3.997, 4.101, 4.093, 4.148, 4.063, 4.017, 4.139, 4.194, 4.151, 4.136, 4.187, 4.171, 4.231, 4.239, 4.241, 4.206, 4.056, 4.086, 3.962, 4.133, 4.285, 4.391, 4.44, 4.313, 4.317, 4.246, 4.31, 4.378, 4.364, 4.595, 4.558, 4.453, 4.536], "lqd": [{"spread": -0.0, "carry": 0.0923, "rate": -1.512, "convexity": 0.0133, "total": -1.4064}, {"spread": 0.084, "carry": 0.0923, "rate": 1.4028, "convexity": 0.0128, "total": 1.592}, {"spread": 0.168, "carry": 0.0923, "rate": -0.1428, "convexity": 0.0, "total": 0.1175}, {"spread": -0.168, "carry": 0.0923, "rate": 0.4788, "convexity": 0.0006, "total": 0.4037}, {"spread": -0.168, "carry": 0.0923, "rate": 0.6888, "convexity": 0.0016, "total": 0.6147}, {"spread": 0.336, "carry": 0.0923, "rate": 0.126, "convexity": 0.0012, "total": 0.5555}, {"spread": -0.084, "carry": 0.0923, "rate": 0.4368, "convexity": 0.0007, "total": 0.4458}, {"spread": -0.588, "carry": 0.0923, "rate": 1.5876, "convexity": 0.0058, "total": 1.0977}, {"spread": -0.084, "carry": 0.0923, "rate": -0.7224, "convexity": 0.0038, "total": -0.7103}, {"spread": -0.42, "carry": 0.0923, "rate": 0.0756, "convexity": 0.0007, "total": -0.2514}, {"spread": 0.168, "carry": 0.0923, "rate": 0.4704, "convexity": 0.0024, "total": 0.7331}, {"spread": -0.168, "carry": 0.0923, "rate": -0.0252, "convexity": 0.0002, "total": -0.1007}, {"spread": -1.68, "carry": 0.0923, "rate": 2.268, "convexity": 0.002, "total": 0.6823}, {"spread": -0.336, "carry": 0.0923, "rate": -4.2672, "convexity": 0.1231, "total": -4.3878}, {"spread": 0.588, "carry": 0.0923, "rate": 1.344, "convexity": 0.0217, "total": 2.046}, {"spread": 0.588, "carry": 0.0923, "rate": 0.5628, "convexity": 0.0077, "total": 1.2508}, {"spread": -0.168, "carry": 0.0923, "rate": -0.4704, "convexity": 0.0024, "total": -0.5437}, {"spread": 0.336, "carry": 0.0923, "rate": -0.4452, "convexity": 0.0001, "total": -0.0168}, {"spread": 0.756, "carry": 0.0923, "rate": -0.5544, "convexity": 0.0002, "total": 0.2941}, {"spread": -0.0, "carry": 0.0923, "rate": -0.5712, "convexity": 0.0019, "total": -0.477}, {"spread": 0.168, "carry": 0.0923, "rate": 0.7812, "convexity": 0.0052, "total": 1.0467}, {"spread": 0.336, "carry": 0.0923, "rate": -0.7896, "convexity": 0.0012, "total": -0.3601}, {"spread": -0.084, "carry": 0.0923, "rate": 0.7224, "convexity": 0.0024, "total": 0.7331}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4116, "convexity": 0.001, "total": 0.5049}, {"spread": -0.0, "carry": 0.0923, "rate": 0.7728, "convexity": 0.0035, "total": 0.8686}, {"spread": 0.672, "carry": 0.0923, "rate": -0.546, "convexity": 0.0001, "total": 0.2184}, {"spread": -0.252, "carry": 0.0923, "rate": -0.63, "convexity": 0.0045, "total": -0.7852}, {"spread": 0.252, "carry": 0.0923, "rate": -0.0756, "convexity": 0.0002, "total": 0.2689}, {"spread": 0.168, "carry": 0.0923, "rate": 0.3864, "convexity": 0.0018, "total": 0.6485}, {"spread": -0.336, "carry": 0.0923, "rate": 1.3944, "convexity": 0.0065, "total": 1.1572}, {"spread": 0.168, "carry": 0.0923, "rate": -0.546, "convexity": 0.0008, "total": -0.2849}, {"spread": 0.42, "carry": 0.0923, "rate": -0.3612, "convexity": 0.0, "total": 0.1511}, {"spread": -0.168, "carry": 0.0923, "rate": 0.5712, "convexity": 0.0009, "total": 0.4965}, {"spread": -0.252, "carry": 0.0923, "rate": 0.2772, "convexity": 0.0, "total": 0.1175}, {"spread": 0.084, "carry": 0.0923, "rate": 1.1844, "convexity": 0.0093, "total": 1.3701}, {"spread": 0.168, "carry": 0.0923, "rate": 0.21, "convexity": 0.0008, "total": 0.4711}, {"spread": 0.252, "carry": 0.0923, "rate": -0.6552, "convexity": 0.0009, "total": -0.3099}, {"spread": -0.084, "carry": 0.0923, "rate": -0.4032, "convexity": 0.0014, "total": -0.3935}, {"spread": -0.0, "carry": 0.0923, "rate": 0.5712, "convexity": 0.0019, "total": 0.6654}, {"spread": -0.504, "carry": 0.0923, "rate": 0.5712, "convexity": 0.0, "total": 0.1595}, {"spread": 0.084, "carry": 0.0923, "rate": 0.3696, "convexity": 0.0012, "total": 0.5471}, {"spread": 0.252, "carry": 0.0923, "rate": 0.084, "convexity": 0.0007, "total": 0.429}, {"spread": -0.252, "carry": 0.0923, "rate": -0.8736, "convexity": 0.0074, "total": -1.0259}, {"spread": -0.336, "carry": 0.0923, "rate": 0.0672, "convexity": 0.0004, "total": -0.1761}, {"spread": 0.084, "carry": 0.0923, "rate": -0.462, "convexity": 0.0008, "total": -0.2849}, {"spread": -0.252, "carry": 0.0923, "rate": 0.714, "convexity": 0.0012, "total": 0.5555}, {"spread": 0.336, "carry": 0.0923, "rate": 0.3864, "convexity": 0.003, "total": 0.8177}, {"spread": 0.252, "carry": 0.0923, "rate": -1.0248, "convexity": 0.0035, "total": -0.677}, {"spread": -0.084, "carry": 0.0923, "rate": -0.462, "convexity": 0.0017, "total": -0.452}, {"spread": -0.0, "carry": 0.0923, "rate": 0.3612, "convexity": 0.0008, "total": 0.4543}, {"spread": 0.084, "carry": 0.0923, "rate": 0.126, "convexity": 0.0003, "total": 0.3026}, {"spread": -0.0, "carry": 0.0923, "rate": -0.4284, "convexity": 0.0011, "total": -0.335}, {"spread": 0.084, "carry": 0.0923, "rate": 0.1344, "convexity": 0.0003, "total": 0.311}, {"spread": 0.252, "carry": 0.0923, "rate": -0.504, "convexity": 0.0004, "total": -0.1593}, {"spread": 0.168, "carry": 0.0923, "rate": -0.0672, "convexity": 0.0001, "total": 0.1932}, {"spread": -0.084, "carry": 0.0923, "rate": -0.0168, "convexity": 0.0001, "total": -0.0084}, {"spread": -0.168, "carry": 0.0923, "rate": 0.294, "convexity": 0.0001, "total": 0.2184}, {"spread": -0.252, "carry": 0.0923, "rate": 1.26, "convexity": 0.0059, "total": 1.1062}, {"spread": 0.084, "carry": 0.0923, "rate": -0.252, "convexity": 0.0002, "total": -0.0755}, {"spread": -0.588, "carry": 0.0923, "rate": 1.0416, "convexity": 0.0012, "total": 0.5471}, {"spread": 0.084, "carry": 0.0923, "rate": -1.4364, "convexity": 0.0106, "total": -1.2495}, {"spread": -0.756, "carry": 0.0923, "rate": -1.2768, "convexity": 0.024, "total": -1.9165}, {"spread": 0.42, "carry": 0.0923, "rate": -0.8904, "convexity": 0.0013, "total": -0.3768}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4116, "convexity": 0.0026, "total": -0.5687}, {"spread": 0.42, "carry": 0.0923, "rate": 1.0668, "convexity": 0.0128, "total": 1.592}, {"spread": 0.336, "carry": 0.0923, "rate": -0.0336, "convexity": 0.0005, "total": 0.3952}, {"spread": 0.168, "carry": 0.0923, "rate": 0.5964, "convexity": 0.0034, "total": 0.8601}, {"spread": -0.0, "carry": 0.0923, "rate": -0.5376, "convexity": 0.0017, "total": -0.4436}, {"spread": -0.084, "carry": 0.0923, "rate": -0.5712, "convexity": 0.0025, "total": -0.5604}, {"spread": 0.168, "carry": 0.0923, "rate": 0.1176, "convexity": 0.0005, "total": 0.3784}, {"spread": 0.336, "carry": 0.0923, "rate": -1.9404, "convexity": 0.015, "total": -1.4971}, {"spread": 0.084, "carry": 0.0923, "rate": 0.3108, "convexity": 0.0009, "total": 0.488}, {"spread": 0.084, "carry": 0.0923, "rate": 0.882, "convexity": 0.0054, "total": 1.0637}, {"spread": -0.084, "carry": 0.0923, "rate": -0.6972, "convexity": 0.0035, "total": -0.6853}], "hyg": [{"spread": -0.0, "carry": 0.1385, "rate": -0.738, "convexity": 0.0036, "total": -0.596}, {"spread": 0.697, "carry": 0.1385, "rate": 0.6847, "convexity": 0.0125, "total": 1.5327}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0697, "convexity": 0.0001, "total": 0.2328}, {"spread": -0.328, "carry": 0.1385, "rate": 0.2337, "convexity": 0.0001, "total": 0.0442}, {"spread": 0.041, "carry": 0.1385, "rate": 0.3362, "convexity": 0.0009, "total": 0.5166}, {"spread": 0.205, "carry": 0.1385, "rate": 0.0615, "convexity": 0.0005, "total": 0.4054}, {"spread": -0.656, "carry": 0.1385, "rate": 0.2132, "convexity": 0.0013, "total": -0.3031}, {"spread": -0.369, "carry": 0.1385, "rate": 0.7749, "convexity": 0.0011, "total": 0.5454}, {"spread": -0.41, "carry": 0.1385, "rate": -0.3526, "convexity": 0.0038, "total": -0.6203}, {"spread": -1.148, "carry": 0.1385, "rate": 0.0369, "convexity": 0.0081, "total": -0.9646}, {"spread": 0.164, "carry": 0.1385, "rate": 0.2296, "convexity": 0.001, "total": 0.5331}, {"spread": -1.066, "carry": 0.1385, "rate": -0.0123, "convexity": 0.0076, "total": -0.9322}, {"spread": -4.018, "carry": 0.1385, "rate": 1.107, "convexity": 0.0555, "total": -2.7171}, {"spread": 0.779, "carry": 0.1385, "rate": -2.0828, "convexity": 0.0111, "total": -1.1542}, {"spread": 0.984, "carry": 0.1385, "rate": 0.656, "convexity": 0.0176, "total": 1.7961}, {"spread": 1.435, "carry": 0.1385, "rate": 0.2747, "convexity": 0.0191, "total": 1.8673}, {"spread": 0.287, "carry": 0.1385, "rate": -0.2296, "convexity": 0.0, "total": 0.1959}, {"spread": 0.287, "carry": 0.1385, "rate": -0.2173, "convexity": 0.0, "total": 0.2082}, {"spread": 1.517, "carry": 0.1385, "rate": -0.2706, "convexity": 0.0102, "total": 1.395}, {"spread": -0.984, "carry": 0.1385, "rate": -0.2788, "convexity": 0.0104, "total": -1.1139}, {"spread": 0.369, "carry": 0.1385, "rate": 0.3813, "convexity": 0.0037, "total": 0.8924}, {"spread": 0.902, "carry": 0.1385, "rate": -0.3854, "convexity": 0.0017, "total": 0.6568}, {"spread": -0.369, "carry": 0.1385, "rate": 0.3526, "convexity": 0.0, "total": 0.1221}, {"spread": 0.205, "carry": 0.1385, "rate": 0.2009, "convexity": 0.0011, "total": 0.5454}, {"spread": 0.451, "carry": 0.1385, "rate": 0.3772, "convexity": 0.0045, "total": 0.9712}, {"spread": 0.902, "carry": 0.1385, "rate": -0.2665, "convexity": 0.0026, "total": 0.7766}, {"spread": -0.697, "carry": 0.1385, "rate": -0.3075, "convexity": 0.0066, "total": -0.8594}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0369, "convexity": 0.0001, "total": 0.2657}, {"spread": 0.369, "carry": 0.1385, "rate": 0.1886, "convexity": 0.002, "total": 0.6981}, {"spread": -1.189, "carry": 0.1385, "rate": 0.6806, "convexity": 0.0017, "total": -0.3682}, {"spread": 0.779, "carry": 0.1385, "rate": -0.2665, "convexity": 0.0017, "total": 0.6527}, {"spread": 0.246, "carry": 0.1385, "rate": -0.1763, "convexity": 0.0, "total": 0.2082}, {"spread": -0.0, "carry": 0.1385, "rate": 0.2788, "convexity": 0.0005, "total": 0.4178}, {"spread": 0.246, "carry": 0.1385, "rate": 0.1353, "convexity": 0.001, "total": 0.5207}, {"spread": -0.041, "carry": 0.1385, "rate": 0.5781, "convexity": 0.0019, "total": 0.6775}, {"spread": 0.164, "carry": 0.1385, "rate": 0.1025, "convexity": 0.0005, "total": 0.4054}, {"spread": 0.287, "carry": 0.1385, "rate": -0.3198, "convexity": 0.0, "total": 0.1057}, {"spread": -0.123, "carry": 0.1385, "rate": -0.1968, "convexity": 0.0007, "total": -0.1807}, {"spread": -0.205, "carry": 0.1385, "rate": 0.2788, "convexity": 0.0, "total": 0.2123}, {"spread": -1.558, "carry": 0.1385, "rate": 0.2788, "convexity": 0.0107, "total": -1.13}, {"spread": 0.574, "carry": 0.1385, "rate": 0.1804, "convexity": 0.0037, "total": 0.8966}, {"spread": 0.656, "carry": 0.1385, "rate": 0.041, "convexity": 0.0032, "total": 0.8386}, {"spread": -0.246, "carry": 0.1385, "rate": -0.4264, "convexity": 0.003, "total": -0.531}, {"spread": -0.861, "carry": 0.1385, "rate": 0.0328, "convexity": 0.0045, "total": -0.6853}, {"spread": 0.328, "carry": 0.1385, "rate": -0.2255, "convexity": 0.0001, "total": 0.241}, {"spread": -0.492, "carry": 0.1385, "rate": 0.3485, "convexity": 0.0001, "total": -0.0049}, {"spread": 0.984, "carry": 0.1385, "rate": 0.1886, "convexity": 0.009, "total": 1.3201}, {"spread": 0.41, "carry": 0.1385, "rate": -0.5002, "convexity": 0.0001, "total": 0.0483}, {"spread": -0.246, "carry": 0.1385, "rate": -0.2255, "convexity": 0.0015, "total": -0.3316}, {"spread": 0.041, "carry": 0.1385, "rate": 0.1763, "convexity": 0.0003, "total": 0.3561}, {"spread": 0.164, "carry": 0.1385, "rate": 0.0615, "convexity": 0.0003, "total": 0.3643}, {"spread": 0.123, "carry": 0.1385, "rate": -0.2091, "convexity": 0.0, "total": 0.0524}, {"spread": 0.369, "carry": 0.1385, "rate": 0.0656, "convexity": 0.0012, "total": 0.5743}, {"spread": 0.369, "carry": 0.1385, "rate": -0.246, "convexity": 0.0001, "total": 0.2616}, {"spread": -0.123, "carry": 0.1385, "rate": -0.0328, "convexity": 0.0002, "total": -0.0172}, {"spread": -0.492, "carry": 0.1385, "rate": -0.0082, "convexity": 0.0016, "total": -0.3601}, {"spread": -0.287, "carry": 0.1385, "rate": 0.1435, "convexity": 0.0001, "total": -0.0049}, {"spread": -0.328, "carry": 0.1385, "rate": 0.615, "convexity": 0.0005, "total": 0.426}, {"spread": 0.369, "carry": 0.1385, "rate": -0.123, "convexity": 0.0004, "total": 0.3849}, {"spread": -0.984, "carry": 0.1385, "rate": 0.5084, "convexity": 0.0015, "total": -0.3357}, {"spread": -0.123, "carry": 0.1385, "rate": -0.7011, "convexity": 0.0044, "total": -0.6812}, {"spread": -0.615, "carry": 0.1385, "rate": -0.6232, "convexity": 0.01, "total": -1.0897}, {"spread": 0.164, "carry": 0.1385, "rate": -0.4346, "convexity": 0.0005, "total": -0.1317}, {"spread": -0.738, "carry": 0.1385, "rate": -0.2009, "convexity": 0.0058, "total": -0.7947}, {"spread": 1.189, "carry": 0.1385, "rate": 0.5207, "convexity": 0.0191, "total": 1.8673}, {"spread": 0.779, "carry": 0.1385, "rate": -0.0164, "convexity": 0.0038, "total": 0.9049}, {"spread": 0.451, "carry": 0.1385, "rate": 0.2911, "convexity": 0.0036, "total": 0.8842}, {"spread": -0.123, "carry": 0.1385, "rate": -0.2624, "convexity": 0.001, "total": -0.246}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2788, "convexity": 0.0001, "total": 0.2287}, {"spread": -0.164, "carry": 0.1385, "rate": 0.0574, "convexity": 0.0001, "total": 0.0319}, {"spread": 0.041, "carry": 0.1385, "rate": -0.9471, "convexity": 0.0054, "total": -0.7623}, {"spread": 0.246, "carry": 0.1385, "rate": 0.1517, "convexity": 0.001, "total": 0.5372}, {"spread": 0.082, "carry": 0.1385, "rate": 0.4305, "convexity": 0.0017, "total": 0.6527}, {"spread": -0.082, "carry": 0.1385, "rate": -0.3403, "convexity": 0.0012, "total": -0.2827}], "source": "FRED OAS + yfinance ^TNX"};
-let wLQD = 0.60, wHYG = 0.40, currentTab = 'cum';
+const DATA = {"labels": ["Jan 10", "Jan 17", "Jan 24", "Jan 31", "Feb 07", "Feb 14", "Feb 21", "Feb 28", "Mar 07", "Mar 14", "Mar 21", "Mar 28", "Apr 04", "Apr 11", "Apr 18", "Apr 25", "May 02", "May 09", "May 16", "May 23", "May 30", "Jun 06", "Jun 13", "Jun 20", "Jun 27", "Jul 04", "Jul 11", "Jul 18", "Jul 25", "Aug 01", "Aug 08", "Aug 15", "Aug 22", "Aug 29", "Sep 05", "Sep 12", "Sep 19", "Sep 26", "Oct 03", "Oct 10", "Oct 17", "Oct 24", "Oct 31", "Nov 07", "Nov 14", "Nov 21", "Nov 28", "Dec 05", "Dec 12", "Dec 19", "Dec 26", "Jan 02", "Jan 09", "Jan 16", "Jan 23", "Jan 30", "Feb 06", "Feb 13", "Feb 20", "Feb 27", "Mar 06", "Mar 13", "Mar 20", "Mar 27", "Apr 03", "Apr 10", "Apr 17", "Apr 24", "May 01", "May 08", "May 15", "May 22", "May 29", "Jun 05"], "oas_dates": ["2025-01-10", "2025-01-17", "2025-01-24", "2025-01-31", "2025-02-07", "2025-02-14", "2025-02-21", "2025-02-28", "2025-03-07", "2025-03-14", "2025-03-21", "2025-03-28", "2025-04-04", "2025-04-11", "2025-04-18", "2025-04-25", "2025-05-02", "2025-05-09", "2025-05-16", "2025-05-23", "2025-05-30", "2025-06-06", "2025-06-13", "2025-06-20", "2025-06-27", "2025-07-04", "2025-07-11", "2025-07-18", "2025-07-25", "2025-08-01", "2025-08-08", "2025-08-15", "2025-08-22", "2025-08-29", "2025-09-05", "2025-09-12", "2025-09-19", "2025-09-26", "2025-10-03", "2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21", "2025-11-28", "2025-12-05", "2025-12-12", "2025-12-19", "2025-12-26", "2026-01-02", "2026-01-09", "2026-01-16", "2026-01-23", "2026-01-30", "2026-02-06", "2026-02-13", "2026-02-20", "2026-02-27", "2026-03-06", "2026-03-13", "2026-03-20", "2026-03-27", "2026-04-03", "2026-04-10", "2026-04-17", "2026-04-24", "2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29", "2026-06-05"], "lqd_oas": [83.0, 82.0, 80.0, 82.0, 84.0, 80.0, 81.0, 88.0, 89.0, 94.0, 92.0, 94.0, 114.0, 118.0, 111.0, 104.0, 106.0, 102.0, 93.0, 93.0, 91.0, 87.0, 88.0, 88.0, 88.0, 80.0, 83.0, 80.0, 78.0, 82.0, 80.0, 75.0, 77.0, 80.0, 79.0, 77.0, 74.0, 75.0, 75.0, 81.0, 80.0, 77.0, 80.0, 84.0, 83.0, 86.0, 82.0, 79.0, 80.0, 80.0, 79.0, 79.0, 78.0, 75.0, 73.0, 74.0, 76.0, 79.0, 78.0, 85.0, 84.0, 93.0, 88.0, 91.0, 86.0, 82.0, 80.0, 80.0, 81.0, 79.0, 75.0, 74.0, 73.0, 74.0], "hyg_oas": [281.0, 264.0, 260.0, 268.0, 267.0, 262.0, 278.0, 287.0, 297.0, 325.0, 321.0, 347.0, 445.0, 426.0, 402.0, 367.0, 360.0, 353.0, 316.0, 340.0, 331.0, 309.0, 318.0, 313.0, 302.0, 280.0, 297.0, 293.0, 284.0, 313.0, 294.0, 288.0, 288.0, 282.0, 283.0, 279.0, 272.0, 275.0, 280.0, 318.0, 304.0, 288.0, 294.0, 315.0, 307.0, 319.0, 295.0, 285.0, 291.0, 290.0, 286.0, 283.0, 274.0, 265.0, 268.0, 280.0, 287.0, 295.0, 286.0, 310.0, 313.0, 328.0, 324.0, 342.0, 317.0, 294.0, 283.0, 286.0, 277.0, 281.0, 280.0, 274.0, 272.0, 274.0], "r2": [4.213, 4.193, 4.205, 4.188, 4.228, 4.213, 4.197, 4.193, 4.197, 4.188, 4.185, 4.188, 4.155, 4.213, 4.205, 4.193, 4.208, 4.215, 4.237, 4.23, 4.232, 4.232, 4.24, 4.195, 4.197, 4.24, 4.237, 4.23, 4.245, 4.182, 4.133, 4.112, 4.088, 4.043, 3.91, 3.928, 3.878, 3.86, 3.858, 3.853, 3.832, 3.763, 3.718, 3.757, 3.788, 3.74, 3.697, 3.603, 3.525, 3.522, 3.543, 3.533, 3.513, 3.557, 3.582, 3.572, 3.59, 3.593, 3.595, 3.578, 3.57, 3.603, 3.618, 3.607, 3.607, 3.593, 3.6, 3.593, 3.575, 3.595, 3.588, 3.585, 3.588, 3.62], "r5": [4.593, 4.414, 4.428, 4.364, 4.334, 4.324, 4.258, 4.028, 4.093, 4.082, 4.008, 3.981, 3.709, 4.16, 3.942, 3.884, 3.932, 3.987, 4.064, 4.078, 3.979, 4.126, 4.024, 3.961, 3.828, 3.939, 3.992, 3.962, 3.952, 3.771, 3.83, 3.845, 3.759, 3.699, 3.583, 3.625, 3.691, 3.77, 3.708, 3.646, 3.592, 3.602, 3.717, 3.68, 3.735, 3.618, 3.6, 3.715, 3.751, 3.693, 3.697, 3.739, 3.757, 3.828, 3.839, 3.797, 3.755, 3.609, 3.65, 3.512, 3.715, 3.874, 4.012, 4.07, 3.948, 3.939, 3.838, 3.92, 4.021, 4.013, 4.258, 4.256, 4.149, 4.188], "r30": [4.965, 4.845, 4.848, 4.813, 4.69, 4.693, 4.669, 4.516, 4.616, 4.615, 4.596, 4.633, 4.388, 4.877, 4.809, 4.738, 4.795, 4.833, 4.899, 5.031, 4.929, 4.963, 4.915, 4.889, 4.845, 4.862, 4.957, 5.001, 4.929, 4.807, 4.855, 4.926, 4.884, 4.917, 4.775, 4.679, 4.756, 4.766, 4.714, 4.634, 4.603, 4.585, 4.67, 4.7, 4.747, 4.715, 4.665, 4.792, 4.858, 4.828, 4.82, 4.864, 4.819, 4.84, 4.833, 4.872, 4.855, 4.698, 4.725, 4.633, 4.755, 4.908, 4.96, 4.982, 4.89, 4.914, 4.885, 4.916, 4.966, 4.947, 5.128, 5.064, 4.993, 4.978], "lqd": [{"spread": -0.0, "carry": 0.0923, "rate": -1.5006, "rate_near": -1.3281, "rate_far": -0.1725, "convexity": 0.0131, "total": -1.3953}, {"spread": 0.084, "carry": 0.0923, "rate": 1.4362, "rate_near": 1.2991, "rate_far": 0.1371, "convexity": 0.0134, "total": 1.6259}, {"spread": 0.168, "carry": 0.0923, "rate": -0.105, "rate_near": -0.1016, "rate_far": -0.0034, "convexity": 0.0, "total": 0.1553}, {"spread": -0.168, "carry": 0.0923, "rate": 0.5045, "rate_near": 0.4645, "rate_far": 0.04, "convexity": 0.0007, "total": 0.4294}, {"spread": -0.168, "carry": 0.0923, "rate": 0.3582, "rate_near": 0.2177, "rate_far": 0.1405, "convexity": 0.0002, "total": 0.2828}, {"spread": 0.336, "carry": 0.0923, "rate": 0.0692, "rate_near": 0.0726, "rate_far": -0.0034, "convexity": 0.001, "total": 0.4984}, {"spread": -0.084, "carry": 0.0923, "rate": 0.5064, "rate_near": 0.479, "rate_far": 0.0274, "convexity": 0.001, "total": 0.5158}, {"spread": -0.588, "carry": 0.0923, "rate": 1.844, "rate_near": 1.6692, "rate_far": 0.1748, "convexity": 0.0092, "total": 1.3575}, {"spread": -0.084, "carry": 0.0923, "rate": -0.586, "rate_near": -0.4717, "rate_far": -0.1142, "convexity": 0.0026, "total": -0.5751}, {"spread": -0.42, "carry": 0.0923, "rate": 0.081, "rate_near": 0.0798, "rate_far": 0.0011, "convexity": 0.0007, "total": -0.246}, {"spread": 0.168, "carry": 0.0923, "rate": 0.5588, "rate_near": 0.5371, "rate_far": 0.0217, "convexity": 0.0031, "total": 0.8221}, {"spread": -0.168, "carry": 0.0923, "rate": 0.1537, "rate_near": 0.196, "rate_far": -0.0423, "convexity": 0.0, "total": 0.078}, {"spread": -1.68, "carry": 0.0923, "rate": 2.254, "rate_near": 1.9741, "rate_far": 0.2799, "convexity": 0.0019, "total": 0.6682}, {"spread": -0.336, "carry": 0.0923, "rate": -3.8318, "rate_near": -3.2732, "rate_far": -0.5586, "convexity": 0.1009, "total": -3.9746}, {"spread": 0.588, "carry": 0.0923, "rate": 1.6598, "rate_near": 1.5822, "rate_far": 0.0777, "convexity": 0.0294, "total": 2.3695}, {"spread": 0.588, "carry": 0.0923, "rate": 0.5021, "rate_near": 0.4209, "rate_far": 0.0811, "convexity": 0.0069, "total": 1.1893}, {"spread": -0.168, "carry": 0.0923, "rate": -0.4135, "rate_near": -0.3484, "rate_far": -0.0651, "convexity": 0.002, "total": -0.4872}, {"spread": 0.336, "carry": 0.0923, "rate": -0.4426, "rate_near": -0.3992, "rate_far": -0.0434, "convexity": 0.0001, "total": -0.0142}, {"spread": 0.756, "carry": 0.0923, "rate": -0.6342, "rate_near": -0.5588, "rate_far": -0.0754, "convexity": 0.0001, "total": 0.2142}, {"spread": -0.0, "carry": 0.0923, "rate": -0.2524, "rate_near": -0.1016, "rate_far": -0.1508, "convexity": 0.0004, "total": -0.1597}, {"spread": 0.168, "carry": 0.0923, "rate": 0.835, "rate_near": 0.7185, "rate_far": 0.1165, "convexity": 0.0058, "total": 1.1012}, {"spread": 0.336, "carry": 0.0923, "rate": -1.1057, "rate_near": -1.0669, "rate_far": -0.0388, "convexity": 0.0034, "total": -0.674}, {"spread": -0.084, "carry": 0.0923, "rate": 0.7951, "rate_near": 0.7403, "rate_far": 0.0548, "convexity": 0.0029, "total": 0.8064}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4869, "rate_near": 0.4572, "rate_far": 0.0297, "convexity": 0.0014, "total": 0.5806}, {"spread": -0.0, "carry": 0.0923, "rate": 1.0155, "rate_near": 0.9653, "rate_far": 0.0503, "convexity": 0.006, "total": 1.1138}, {"spread": 0.672, "carry": 0.0923, "rate": -0.825, "rate_near": -0.8056, "rate_far": -0.0194, "convexity": 0.0001, "total": -0.0606}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4932, "rate_near": -0.3847, "rate_far": -0.1085, "convexity": 0.0032, "total": -0.6496}, {"spread": 0.252, "carry": 0.0923, "rate": 0.1675, "rate_near": 0.2177, "rate_far": -0.0503, "convexity": 0.001, "total": 0.5128}, {"spread": 0.168, "carry": 0.0923, "rate": 0.1548, "rate_near": 0.0726, "rate_far": 0.0823, "convexity": 0.0006, "total": 0.4157}, {"spread": -0.336, "carry": 0.0923, "rate": 1.453, "rate_near": 1.3136, "rate_far": 0.1394, "convexity": 0.0072, "total": 1.2166}, {"spread": 0.168, "carry": 0.0923, "rate": -0.483, "rate_near": -0.4282, "rate_far": -0.0548, "convexity": 0.0006, "total": -0.2221}, {"spread": 0.42, "carry": 0.0923, "rate": -0.19, "rate_near": -0.1089, "rate_far": -0.0811, "convexity": 0.0003, "total": 0.3226}, {"spread": -0.168, "carry": 0.0923, "rate": 0.6721, "rate_near": 0.6242, "rate_far": 0.048, "convexity": 0.0015, "total": 0.5979}, {"spread": -0.252, "carry": 0.0923, "rate": 0.3978, "rate_near": 0.4355, "rate_far": -0.0377, "convexity": 0.0001, "total": 0.2382}, {"spread": 0.084, "carry": 0.0923, "rate": 1.0041, "rate_near": 0.8419, "rate_far": 0.1622, "convexity": 0.0069, "total": 1.1873}, {"spread": 0.168, "carry": 0.0923, "rate": -0.1951, "rate_near": -0.3048, "rate_far": 0.1097, "convexity": 0.0, "total": 0.0652}, {"spread": 0.252, "carry": 0.0923, "rate": -0.567, "rate_near": -0.479, "rate_far": -0.088, "convexity": 0.0006, "total": -0.2221}, {"spread": -0.084, "carry": 0.0923, "rate": -0.5848, "rate_near": -0.5734, "rate_far": -0.0114, "convexity": 0.0026, "total": -0.5739}, {"spread": -0.0, "carry": 0.0923, "rate": 0.5094, "rate_near": 0.45, "rate_far": 0.0594, "convexity": 0.0015, "total": 0.6032}, {"spread": -0.504, "carry": 0.0923, "rate": 0.5414, "rate_near": 0.45, "rate_far": 0.0914, "convexity": 0.0, "total": 0.1297}, {"spread": 0.084, "carry": 0.0923, "rate": 0.4273, "rate_near": 0.3919, "rate_far": 0.0354, "convexity": 0.0015, "total": 0.6052}, {"spread": 0.252, "carry": 0.0923, "rate": -0.052, "rate_near": -0.0726, "rate_far": 0.0206, "convexity": 0.0002, "total": 0.2925}, {"spread": -0.252, "carry": 0.0923, "rate": -0.9317, "rate_near": -0.8346, "rate_far": -0.0971, "convexity": 0.0081, "total": -1.0833}, {"spread": -0.336, "carry": 0.0923, "rate": 0.2343, "rate_near": 0.2685, "rate_far": -0.0343, "convexity": 0.0001, "total": -0.0094}, {"spread": 0.084, "carry": 0.0923, "rate": -0.4529, "rate_near": -0.3992, "rate_far": -0.0537, "convexity": 0.0008, "total": -0.2758}, {"spread": -0.252, "carry": 0.0923, "rate": 0.8857, "rate_near": 0.8491, "rate_far": 0.0366, "convexity": 0.0023, "total": 0.7283}, {"spread": 0.336, "carry": 0.0923, "rate": 0.1878, "rate_near": 0.1306, "rate_far": 0.0571, "convexity": 0.0016, "total": 0.6177}, {"spread": 0.252, "carry": 0.0923, "rate": -0.9797, "rate_near": -0.8346, "rate_far": -0.1451, "convexity": 0.0031, "total": -0.6323}, {"spread": -0.084, "carry": 0.0923, "rate": -0.3367, "rate_near": -0.2613, "rate_far": -0.0754, "convexity": 0.001, "total": -0.3273}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4552, "rate_near": 0.4209, "rate_far": 0.0343, "convexity": 0.0012, "total": 0.5487}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0199, "rate_near": -0.029, "rate_far": 0.0091, "convexity": 0.0, "total": 0.1564}, {"spread": -0.0, "carry": 0.0923, "rate": -0.3551, "rate_near": -0.3048, "rate_far": -0.0503, "convexity": 0.0007, "total": -0.262}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0792, "rate_near": -0.1306, "rate_far": 0.0514, "convexity": 0.0, "total": 0.0971}, {"spread": 0.252, "carry": 0.0923, "rate": -0.5393, "rate_near": -0.5153, "rate_far": -0.024, "convexity": 0.0005, "total": -0.1945}, {"spread": 0.168, "carry": 0.0923, "rate": -0.0718, "rate_near": -0.0798, "rate_far": 0.008, "convexity": 0.0001, "total": 0.1885}, {"spread": -0.084, "carry": 0.0923, "rate": 0.2603, "rate_near": 0.3048, "rate_far": -0.0446, "convexity": 0.0002, "total": 0.2688}, {"spread": -0.168, "carry": 0.0923, "rate": 0.3242, "rate_near": 0.3048, "rate_far": 0.0194, "convexity": 0.0001, "total": 0.2487}, {"spread": -0.252, "carry": 0.0923, "rate": 1.239, "rate_near": 1.0596, "rate_far": 0.1794, "convexity": 0.0057, "total": 1.0849}, {"spread": 0.084, "carry": 0.0923, "rate": -0.3284, "rate_near": -0.2976, "rate_far": -0.0308, "convexity": 0.0003, "total": -0.1518}, {"spread": -0.588, "carry": 0.0923, "rate": 1.1066, "rate_near": 1.0015, "rate_far": 0.1051, "convexity": 0.0016, "total": 0.6125}, {"spread": 0.084, "carry": 0.0923, "rate": -1.6127, "rate_near": -1.4733, "rate_far": -0.1394, "convexity": 0.0136, "total": -1.4228}, {"spread": -0.756, "carry": 0.0923, "rate": -1.3287, "rate_near": -1.154, "rate_far": -0.1748, "convexity": 0.0253, "total": -1.9672}, {"spread": 0.42, "carry": 0.0923, "rate": -1.061, "rate_near": -1.0015, "rate_far": -0.0594, "convexity": 0.0024, "total": -0.5463}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4461, "rate_near": -0.4209, "rate_far": -0.0251, "convexity": 0.0028, "total": -0.6029}, {"spread": 0.42, "carry": 0.0923, "rate": 0.9905, "rate_near": 0.8854, "rate_far": 0.1051, "convexity": 0.0116, "total": 1.5144}, {"spread": 0.336, "carry": 0.0923, "rate": 0.0379, "rate_near": 0.0653, "rate_far": -0.0274, "convexity": 0.0008, "total": 0.467}, {"spread": 0.168, "carry": 0.0923, "rate": 0.7661, "rate_near": 0.733, "rate_far": 0.0331, "convexity": 0.0051, "total": 1.0315}, {"spread": -0.0, "carry": 0.0923, "rate": -0.6305, "rate_near": -0.5951, "rate_far": -0.0354, "convexity": 0.0023, "total": -0.5359}, {"spread": -0.084, "carry": 0.0923, "rate": -0.7901, "rate_near": -0.733, "rate_far": -0.0571, "convexity": 0.0044, "total": -0.7774}, {"spread": 0.168, "carry": 0.0923, "rate": 0.0798, "rate_near": 0.0581, "rate_far": 0.0217, "convexity": 0.0004, "total": 0.3404}, {"spread": 0.336, "carry": 0.0923, "rate": -1.9849, "rate_near": -1.7781, "rate_far": -0.2068, "convexity": 0.0158, "total": -1.5408}, {"spread": 0.084, "carry": 0.0923, "rate": 0.0876, "rate_near": 0.0145, "rate_far": 0.0731, "convexity": 0.0002, "total": 0.2641}, {"spread": 0.084, "carry": 0.0923, "rate": 0.8577, "rate_near": 0.7766, "rate_far": 0.0811, "convexity": 0.0052, "total": 1.0391}, {"spread": -0.084, "carry": 0.0923, "rate": -0.2659, "rate_near": -0.283, "rate_far": 0.0171, "convexity": 0.0007, "total": -0.2569}], "hyg": [{"spread": -0.0, "carry": 0.1385, "rate": -0.5498, "rate_near": -0.0246, "rate_far": -0.5252, "convexity": 0.002, "total": -0.4094}, {"spread": 0.697, "carry": 0.1385, "rate": 0.5383, "rate_near": 0.0246, "rate_far": 0.5137, "convexity": 0.01, "total": 1.3838}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0549, "rate_near": -0.0148, "rate_far": -0.0402, "convexity": 0.0001, "total": 0.2476}, {"spread": -0.328, "carry": 0.1385, "rate": 0.2046, "rate_near": 0.0209, "rate_far": 0.1837, "convexity": 0.0001, "total": 0.0152}, {"spread": 0.041, "carry": 0.1385, "rate": 0.0369, "rate_near": -0.0492, "rate_far": 0.0861, "convexity": 0.0, "total": 0.2164}, {"spread": 0.205, "carry": 0.1385, "rate": 0.0472, "rate_near": 0.0185, "rate_far": 0.0287, "convexity": 0.0004, "total": 0.391}, {"spread": -0.656, "carry": 0.1385, "rate": 0.2091, "rate_near": 0.0197, "rate_far": 0.1894, "convexity": 0.0013, "total": -0.3071}, {"spread": -0.369, "carry": 0.1385, "rate": 0.665, "rate_near": 0.0049, "rate_far": 0.6601, "convexity": 0.0006, "total": 0.4351}, {"spread": -0.41, "carry": 0.1385, "rate": -0.1915, "rate_near": -0.0049, "rate_far": -0.1866, "convexity": 0.0024, "total": -0.4606}, {"spread": -1.148, "carry": 0.1385, "rate": 0.0426, "rate_near": 0.0111, "rate_far": 0.0316, "convexity": 0.008, "total": -0.9589}, {"spread": 0.164, "carry": 0.1385, "rate": 0.2161, "rate_near": 0.0037, "rate_far": 0.2124, "convexity": 0.0009, "total": 0.5195}, {"spread": -1.066, "carry": 0.1385, "rate": 0.0738, "rate_near": -0.0037, "rate_far": 0.0775, "convexity": 0.0064, "total": -0.8473}, {"spread": -4.018, "carry": 0.1385, "rate": 0.8212, "rate_near": 0.0406, "rate_far": 0.7806, "convexity": 0.0669, "total": -2.9914}, {"spread": 0.779, "carry": 0.1385, "rate": -1.3657, "rate_near": -0.0713, "rate_far": -1.2944, "convexity": 0.0023, "total": -0.446}, {"spread": 0.984, "carry": 0.1385, "rate": 0.6355, "rate_near": 0.0098, "rate_far": 0.6257, "convexity": 0.0172, "total": 1.7751}, {"spread": 1.435, "carry": 0.1385, "rate": 0.1812, "rate_near": 0.0148, "rate_far": 0.1665, "convexity": 0.0171, "total": 1.7718}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1562, "rate_near": -0.0185, "rate_far": -0.1378, "convexity": 0.0001, "total": 0.2694}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1665, "rate_near": -0.0086, "rate_far": -0.1579, "convexity": 0.0001, "total": 0.2591}, {"spread": 1.517, "carry": 0.1385, "rate": -0.2481, "rate_near": -0.0271, "rate_far": -0.221, "convexity": 0.0105, "total": 1.4179}, {"spread": -0.984, "carry": 0.1385, "rate": -0.0316, "rate_near": 0.0086, "rate_far": -0.0402, "convexity": 0.0067, "total": -0.8704}, {"spread": 0.369, "carry": 0.1385, "rate": 0.2817, "rate_near": -0.0025, "rate_far": 0.2841, "convexity": 0.0028, "total": 0.7919}, {"spread": 0.902, "carry": 0.1385, "rate": -0.4219, "rate_near": -0.0, "rate_far": -0.4219, "convexity": 0.0015, "total": 0.6201}, {"spread": -0.369, "carry": 0.1385, "rate": 0.2829, "rate_near": -0.0098, "rate_far": 0.2927, "convexity": 0.0, "total": 0.0524}, {"spread": 0.205, "carry": 0.1385, "rate": 0.2362, "rate_near": 0.0553, "rate_far": 0.1808, "convexity": 0.0013, "total": 0.5809}, {"spread": 0.451, "carry": 0.1385, "rate": 0.3792, "rate_near": -0.0025, "rate_far": 0.3817, "convexity": 0.0045, "total": 0.9732}, {"spread": 0.902, "carry": 0.1385, "rate": -0.3715, "rate_near": -0.0529, "rate_far": -0.3186, "convexity": 0.0018, "total": 0.6708}, {"spread": -0.697, "carry": 0.1385, "rate": -0.1484, "rate_near": 0.0037, "rate_far": -0.1521, "convexity": 0.0047, "total": -0.7023}, {"spread": 0.164, "carry": 0.1385, "rate": 0.0947, "rate_near": 0.0086, "rate_far": 0.0861, "convexity": 0.0004, "total": 0.3976}, {"spread": 0.369, "carry": 0.1385, "rate": 0.0103, "rate_near": -0.0184, "rate_far": 0.0287, "convexity": 0.0009, "total": 0.5187}, {"spread": -1.189, "carry": 0.1385, "rate": 0.597, "rate_near": 0.0775, "rate_far": 0.5195, "convexity": 0.0023, "total": -0.4513}, {"spread": 0.779, "carry": 0.1385, "rate": -0.1091, "rate_near": 0.0603, "rate_far": -0.1693, "convexity": 0.0029, "total": 0.8113}, {"spread": 0.246, "carry": 0.1385, "rate": -0.0172, "rate_near": 0.0258, "rate_far": -0.0431, "convexity": 0.0003, "total": 0.3676}, {"spread": -0.0, "carry": 0.1385, "rate": 0.2763, "rate_near": 0.0295, "rate_far": 0.2468, "convexity": 0.0005, "total": 0.4153}, {"spread": 0.246, "carry": 0.1385, "rate": 0.2276, "rate_near": 0.0553, "rate_far": 0.1722, "convexity": 0.0015, "total": 0.6135}, {"spread": -0.041, "carry": 0.1385, "rate": 0.4965, "rate_near": 0.1636, "rate_far": 0.3329, "convexity": 0.0014, "total": 0.5953}, {"spread": 0.164, "carry": 0.1385, "rate": -0.1427, "rate_near": -0.0221, "rate_far": -0.1205, "convexity": 0.0, "total": 0.1598}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1279, "rate_near": 0.0615, "rate_far": -0.1894, "convexity": 0.0002, "total": 0.2977}, {"spread": -0.123, "carry": 0.1385, "rate": -0.2046, "rate_near": 0.0221, "rate_far": -0.2267, "convexity": 0.0007, "total": -0.1884}, {"spread": -0.205, "carry": 0.1385, "rate": 0.1804, "rate_near": 0.0025, "rate_far": 0.1779, "convexity": 0.0, "total": 0.1139}, {"spread": -1.558, "carry": 0.1385, "rate": 0.1841, "rate_near": 0.0062, "rate_far": 0.1779, "convexity": 0.0124, "total": -1.2231}, {"spread": 0.574, "carry": 0.1385, "rate": 0.1808, "rate_near": 0.0258, "rate_far": 0.155, "convexity": 0.0037, "total": 0.897}, {"spread": 0.656, "carry": 0.1385, "rate": 0.0562, "rate_near": 0.0849, "rate_far": -0.0287, "convexity": 0.0033, "total": 0.854}, {"spread": -0.246, "carry": 0.1385, "rate": -0.2747, "rate_near": 0.0554, "rate_far": -0.3301, "convexity": 0.0018, "total": -0.3805}, {"spread": -0.861, "carry": 0.1385, "rate": 0.0582, "rate_near": -0.048, "rate_far": 0.1062, "convexity": 0.0042, "total": -0.6601}, {"spread": 0.328, "carry": 0.1385, "rate": -0.196, "rate_near": -0.0381, "rate_far": -0.1578, "convexity": 0.0001, "total": 0.2706}, {"spread": -0.492, "carry": 0.1385, "rate": 0.3948, "rate_near": 0.059, "rate_far": 0.3358, "convexity": 0.0001, "total": 0.0414}, {"spread": 0.984, "carry": 0.1385, "rate": 0.1046, "rate_near": 0.0529, "rate_far": 0.0517, "convexity": 0.0078, "total": 1.2348}, {"spread": 0.41, "carry": 0.1385, "rate": -0.2144, "rate_near": 0.1156, "rate_far": -0.3301, "convexity": 0.0003, "total": 0.3343}, {"spread": -0.246, "carry": 0.1385, "rate": -0.0074, "rate_near": 0.0959, "rate_far": -0.1033, "convexity": 0.0004, "total": -0.1145}, {"spread": 0.041, "carry": 0.1385, "rate": 0.1701, "rate_near": 0.0037, "rate_far": 0.1665, "convexity": 0.0003, "total": 0.3499}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0373, "rate_near": -0.0258, "rate_far": -0.0115, "convexity": 0.0001, "total": 0.2653}, {"spread": 0.123, "carry": 0.1385, "rate": -0.1082, "rate_near": 0.0123, "rate_far": -0.1205, "convexity": 0.0, "total": 0.1532}, {"spread": 0.369, "carry": 0.1385, "rate": -0.0271, "rate_near": 0.0246, "rate_far": -0.0517, "convexity": 0.0008, "total": 0.4812}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2579, "rate_near": -0.0541, "rate_far": -0.2038, "convexity": 0.0001, "total": 0.2497}, {"spread": -0.123, "carry": 0.1385, "rate": -0.0623, "rate_near": -0.0308, "rate_far": -0.0316, "convexity": 0.0002, "total": -0.0466}, {"spread": -0.492, "carry": 0.1385, "rate": 0.1328, "rate_near": 0.0123, "rate_far": 0.1205, "convexity": 0.0008, "total": -0.2199}, {"spread": -0.287, "carry": 0.1385, "rate": 0.0984, "rate_near": -0.0221, "rate_far": 0.1205, "convexity": 0.0002, "total": -0.0499}, {"spread": -0.328, "carry": 0.1385, "rate": 0.4153, "rate_near": -0.0037, "rate_far": 0.419, "convexity": 0.0, "total": 0.2258}, {"spread": 0.369, "carry": 0.1385, "rate": -0.1201, "rate_near": -0.0025, "rate_far": -0.1177, "convexity": 0.0004, "total": 0.3877}, {"spread": -0.984, "carry": 0.1385, "rate": 0.417, "rate_near": 0.0209, "rate_far": 0.3961, "convexity": 0.0021, "total": -0.4265}, {"spread": -0.123, "carry": 0.1385, "rate": -0.5728, "rate_near": 0.0098, "rate_far": -0.5826, "convexity": 0.0032, "total": -0.5541}, {"spread": -0.615, "carry": 0.1385, "rate": -0.4969, "rate_near": -0.0406, "rate_far": -0.4563, "convexity": 0.0081, "total": -0.9654}, {"spread": 0.164, "carry": 0.1385, "rate": -0.4145, "rate_near": -0.0185, "rate_far": -0.3961, "convexity": 0.0004, "total": -0.1116}, {"spread": -0.738, "carry": 0.1385, "rate": -0.1529, "rate_near": 0.0135, "rate_far": -0.1665, "convexity": 0.0052, "total": -0.7473}, {"spread": 1.025, "carry": 0.1385, "rate": 0.3501, "rate_near": -0.0, "rate_far": 0.3501, "convexity": 0.0124, "total": 1.526}, {"spread": 0.943, "carry": 0.1385, "rate": 0.0431, "rate_near": 0.0172, "rate_far": 0.0258, "convexity": 0.0064, "total": 1.1309}, {"spread": 0.451, "carry": 0.1385, "rate": 0.2813, "rate_near": -0.0086, "rate_far": 0.2899, "convexity": 0.0035, "total": 0.8742}, {"spread": -0.123, "carry": 0.1385, "rate": -0.2267, "rate_near": 0.0086, "rate_far": -0.2353, "convexity": 0.0008, "total": -0.2105}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2677, "rate_near": 0.0221, "rate_far": -0.2899, "convexity": 0.0001, "total": 0.2398}, {"spread": -0.164, "carry": 0.1385, "rate": -0.0016, "rate_near": -0.0246, "rate_far": 0.023, "convexity": 0.0002, "total": -0.027}, {"spread": 0.041, "carry": 0.1385, "rate": -0.6945, "rate_near": 0.0086, "rate_far": -0.7031, "convexity": 0.0028, "total": -0.5123}, {"spread": 0.246, "carry": 0.1385, "rate": 0.0094, "rate_near": 0.0037, "rate_far": 0.0057, "convexity": 0.0004, "total": 0.3943}, {"spread": 0.082, "carry": 0.1385, "rate": 0.3034, "rate_near": -0.0037, "rate_far": 0.3071, "convexity": 0.001, "total": 0.5248}, {"spread": -0.082, "carry": 0.1385, "rate": -0.1513, "rate_near": -0.0394, "rate_far": -0.1119, "convexity": 0.0004, "total": -0.0945}], "source": "FRED OAS + mixed yields"};
+let wLQD=0.60, wHYG=0.40, currentTab='cum';
 
-function sum(arr, k) { return arr.reduce((a, b) => a + b[k], 0); }
+function sum(arr,k){return arr.reduce((a,b)=>a+b[k],0);}
 
-function getTotals() {
-  const ls=sum(DATA.lqd,'spread'), lc=sum(DATA.lqd,'carry'), lr=sum(DATA.lqd,'rate'), lx=sum(DATA.lqd,'convexity');
-  const hs=sum(DATA.hyg,'spread'), hc=sum(DATA.hyg,'carry'), hr=sum(DATA.hyg,'rate'), hx=sum(DATA.hyg,'convexity');
-  return {
-    wlqd: { spread:wLQD*ls, carry:wLQD*lc, rate:wLQD*lr, convexity:wLQD*lx, total:wLQD*(ls+lc+lr+lx) },
-    whyg: { spread:wHYG*hs, carry:wHYG*hc, rate:wHYG*hr, convexity:wHYG*hx, total:wHYG*(hs+hc+hr+hx) },
-    port: { spread:wLQD*ls+wHYG*hs, carry:wLQD*lc+wHYG*hc, rate:wLQD*lr+wHYG*hr, convexity:wLQD*lx+wHYG*hx,
-            total:wLQD*(ls+lc+lr+lx)+wHYG*(hs+hc+hr+hx) },
+function getTotals(){
+  const ls=sum(DATA.lqd,'spread'),   lc=sum(DATA.lqd,'carry'),
+        lr=sum(DATA.lqd,'rate'),     lrn=sum(DATA.lqd,'rate_near'),
+        lrf=sum(DATA.lqd,'rate_far'),lx=sum(DATA.lqd,'convexity');
+  const hs=sum(DATA.hyg,'spread'),   hc=sum(DATA.hyg,'carry'),
+        hr=sum(DATA.hyg,'rate'),     hrn=sum(DATA.hyg,'rate_near'),
+        hrf=sum(DATA.hyg,'rate_far'),hx=sum(DATA.hyg,'convexity');
+  return{
+    wlqd:{spread:wLQD*ls,carry:wLQD*lc,rate:wLQD*lr,rate_near:wLQD*lrn,
+          rate_far:wLQD*lrf,convexity:wLQD*lx,total:wLQD*(ls+lc+lr+lx)},
+    whyg:{spread:wHYG*hs,carry:wHYG*hc,rate:wHYG*hr,rate_near:wHYG*hrn,
+          rate_far:wHYG*hrf,convexity:wHYG*hx,total:wHYG*(hs+hc+hr+hx)},
+    port:{spread:wLQD*ls+wHYG*hs, carry:wLQD*lc+wHYG*hc,
+          rate:wLQD*lr+wHYG*hr,   rate_near:wLQD*lrn+wHYG*hrn,
+          rate_far:wLQD*lrf+wHYG*hrf, convexity:wLQD*lx+wHYG*hx,
+          total:wLQD*(ls+lc+lr+lx)+wHYG*(hs+hc+hr+hx)},
   };
 }
 
-function makeBar(id, label, val, color) {
-  const pct = Math.min(100, Math.abs(val) / 3 * 100);
-  const vc  = val >= 0 ? 'var(--pos)' : 'var(--neg)';
-  document.getElementById(id).innerHTML = `
-    <div class="ab-row"><span>${label}</span>
-      <span style="color:${vc}">${val>=0?'+':''}${val.toFixed(2)}%</span></div>
-    <div class="ab-track">
+function makeBar(id,label,val,color,small){
+  const h=small?3:4;
+  const pct=Math.min(100,Math.abs(val)/3*100);
+  const vc=val>=0?'var(--pos)':'var(--neg)';
+  document.getElementById(id).innerHTML=`
+    <div class="ab-row"><span style="font-size:${small?'11':'12'}px;color:var(--t2)">${label}</span>
+      <span style="color:${vc};font-size:${small?'11':'12'}px">${val>=0?'+':''}${val.toFixed(2)}%</span></div>
+    <div class="ab-track" style="height:${h}px">
       <div class="ab-fill" style="width:${pct}%;background:${color}"></div></div>`;
 }
 
-function updateCards(t) {
-  document.getElementById('lqdPct').textContent = Math.round(wLQD*100) + '%';
-  document.getElementById('hygPct').textContent = Math.round(wHYG*100) + '%';
-  makeBar('lqd-a-spread','Spread',    t.wlqd.spread,    'var(--spread)');
-  makeBar('lqd-a-carry', 'Carry',     t.wlqd.carry,     'var(--carry)');
-  makeBar('lqd-a-rate',  'Rate',      t.wlqd.rate,      'var(--rate)');
-  makeBar('lqd-a-convex','Convexity', t.wlqd.convexity, 'var(--convex)');
-  makeBar('hyg-a-spread','Spread',    t.whyg.spread,    'var(--spread)');
-  makeBar('hyg-a-carry', 'Carry',     t.whyg.carry,     'var(--carry)');
-  makeBar('hyg-a-rate',  'Rate',      t.whyg.rate,      'var(--rate)');
-  makeBar('hyg-a-convex','Convexity', t.whyg.convexity, 'var(--convex)');
+function updateCards(t){
+  document.getElementById('lqdPct').textContent=Math.round(wLQD*100)+'%';
+  document.getElementById('hygPct').textContent=Math.round(wHYG*100)+'%';
+  makeBar('lqd-a-spread',   'Spread',              t.wlqd.spread,    'var(--spread)');
+  makeBar('lqd-a-carry',    'Carry',               t.wlqd.carry,     'var(--carry)');
+  makeBar('lqd-a-rate',     'Rate (total)',         t.wlqd.rate,      'var(--rate)');
+  makeBar('lqd-a-rate-near','  ↳ 5y node',          t.wlqd.rate_near, 'var(--rate2)',true);
+  makeBar('lqd-a-rate-far', '  ↳ 30y node',         t.wlqd.rate_far,  '#9080FF',    true);
+  makeBar('lqd-a-convex',   'Convexity',            t.wlqd.convexity, 'var(--convex)');
+  makeBar('hyg-a-spread',   'Spread',              t.whyg.spread,    'var(--spread)');
+  makeBar('hyg-a-carry',    'Carry',               t.whyg.carry,     'var(--carry)');
+  makeBar('hyg-a-rate',     'Rate (total)',         t.whyg.rate,      'var(--rate)');
+  makeBar('hyg-a-rate-near','  ↳ 2y node',          t.whyg.rate_near, 'var(--rate2)',true);
+  makeBar('hyg-a-rate-far', '  ↳ 5y node',          t.whyg.rate_far,  '#9080FF',    true);
+  makeBar('hyg-a-convex',   'Convexity',            t.whyg.convexity, 'var(--convex)');
 }
 
-function updateMetrics(t) {
-  const N = DATA.lqd_oas.length;
-  const oasNow   = wLQD*DATA.lqd_oas[N-1] + wHYG*DATA.hyg_oas[N-1];
-  const oasStart = wLQD*DATA.lqd_oas[0]   + wHYG*DATA.hyg_oas[0];
-  const oasChg   = oasNow - oasStart;
-  const r10Now   = DATA.rate_10y[N-1];
-  const items = [
-    { l:'Portfolio total',    v:(t.port.total>=0?'+':'')+t.port.total.toFixed(2)+'%',       s:'Rate+Spread+Carry+Convexity', p:t.port.total>=0 },
-    { l:'Wtd avg OAS (now)',  v:oasNow.toFixed(0)+' bp',
-      s:(oasChg>=0?'+':'')+oasChg.toFixed(0)+' bp vs start',                               p:oasChg<0 },
-    { l:'Spread contrib',     v:(t.port.spread>=0?'+':'')+t.port.spread.toFixed(2)+'%',     s:'−Dur × ΔOAS',      p:t.port.spread>=0 },
-    { l:'Rate contrib',       v:(t.port.rate>=0?'+':'')+t.port.rate.toFixed(2)+'%',         s:'−Dur × Δ10y',      p:t.port.rate>=0 },
-    { l:'Carry',              v:'+'+t.port.carry.toFixed(2)+'%',                            s:'Coupon income',    p:true },
-    { l:'Convexity contrib',  v:(t.port.convexity>=0?'+':'')+t.port.convexity.toFixed(2)+'%', s:'½·C·(Δr+ΔOAS)²', p:t.port.convexity>=0 },
-    { l:'10y yield (latest)', v:r10Now.toFixed(2)+'%',                                      s:DATA.source,        p:r10Now<4.5 },
+function updateMetrics(t){
+  const N=DATA.lqd_oas.length;
+  const oasNow=wLQD*DATA.lqd_oas[N-1]+wHYG*DATA.hyg_oas[N-1];
+  const oasChg=oasNow-(wLQD*DATA.lqd_oas[0]+wHYG*DATA.hyg_oas[0]);
+  const items=[
+    {l:'Portfolio total',   v:(t.port.total>=0?'+':'')+t.port.total.toFixed(2)+'%',      s:'All components',   p:t.port.total>=0},
+    {l:'Wtd avg OAS',       v:oasNow.toFixed(0)+' bp',
+     s:(oasChg>=0?'+':'')+oasChg.toFixed(0)+' bp vs start',                              p:oasChg<0},
+    {l:'Spread contrib',    v:(t.port.spread>=0?'+':'')+t.port.spread.toFixed(2)+'%',    s:'−Dur × ΔOAS',      p:t.port.spread>=0},
+    {l:'Rate contrib',      v:(t.port.rate>=0?'+':'')+t.port.rate.toFixed(2)+'%',        s:'KRD near+far',     p:t.port.rate>=0},
+    {l:'  Near node',       v:(t.port.rate_near>=0?'+':'')+t.port.rate_near.toFixed(2)+'%', s:'LQD:5y  HYG:2y', p:t.port.rate_near>=0},
+    {l:'  Far node',        v:(t.port.rate_far>=0?'+':'')+t.port.rate_far.toFixed(2)+'%',   s:'LQD:30y HYG:5y', p:t.port.rate_far>=0},
+    {l:'Carry',             v:'+'+t.port.carry.toFixed(2)+'%',                           s:'Coupon income',    p:true},
+    {l:'Convexity',         v:(t.port.convexity>=0?'+':'')+t.port.convexity.toFixed(2)+'%', s:'½·C·(Δr̄+ΔOAS)²', p:t.port.convexity>=0},
   ];
-  document.getElementById('metrics').innerHTML = items.map(m => `
+  document.getElementById('metrics').innerHTML=items.map(m=>`
     <div class="mc">
       <div class="mc-lbl">${m.l}</div>
       <div class="mc-val ${m.p?'pos':'neg'}">${m.v}</div>
@@ -202,130 +232,153 @@ function updateMetrics(t) {
     </div>`).join('');
 }
 
-function updateTable(t) {
-  const rows = [
-    { c:'Rate contribution',   f:'−Dur × Δ10y',     lqd:t.wlqd.rate,      hyg:t.whyg.rate,      p:t.port.rate },
-    { c:'Spread contribution', f:'−Dur × ΔOAS',      lqd:t.wlqd.spread,    hyg:t.whyg.spread,    p:t.port.spread },
-    { c:'Carry',               f:'coupon ÷ n',        lqd:t.wlqd.carry,     hyg:t.whyg.carry,     p:t.port.carry },
-    { c:'Convexity',           f:'½·C·(Δr+ΔOAS)²',  lqd:t.wlqd.convexity, hyg:t.whyg.convexity, p:t.port.convexity },
-    { c:'Total return',        f:'Sum',               lqd:t.wlqd.total,     hyg:t.whyg.total,     p:t.port.total },
+function updateTable(t){
+  const rows=[
+    {c:'Rate contribution', f:'KRD×Δr near+far', lqd:t.wlqd.rate,      hyg:t.whyg.rate,      p:t.port.rate,      sub:true},
+    {c:'  Near node',       f:'LQD:−KRD₅×Δr₅ / HYG:−KRD₂×Δr₂',
+                                                  lqd:t.wlqd.rate_near, hyg:t.whyg.rate_near, p:t.port.rate_near, sub:false, indent:true},
+    {c:'  Far node',        f:'LQD:−KRD₃₀×Δr₃₀ / HYG:−KRD₅×Δr₅',
+                                                  lqd:t.wlqd.rate_far,  hyg:t.whyg.rate_far,  p:t.port.rate_far,  sub:false, indent:true},
+    {c:'Spread contribution',f:'−Dur × ΔOAS',    lqd:t.wlqd.spread,    hyg:t.whyg.spread,    p:t.port.spread},
+    {c:'Carry',              f:'coupon ÷ 52',     lqd:t.wlqd.carry,     hyg:t.whyg.carry,     p:t.port.carry},
+    {c:'Convexity',          f:'½·C·(Δr̄+ΔOAS)²', lqd:t.wlqd.convexity, hyg:t.whyg.convexity, p:t.port.convexity},
+    {c:'Total return',       f:'Sum',             lqd:t.wlqd.total,     hyg:t.whyg.total,     p:t.port.total,     total:true},
   ];
-  const sep = 'border-top:.5px solid rgba(255,255,255,.08);';
-  document.getElementById('summaryTbody').innerHTML = rows.map((r, i) => {
-    const s = i === 4 ? sep : '';
-    const c = v => v >= 0 ? 'var(--pos)' : 'var(--neg)';
-    const f = v => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-    return `<tr>
-      <td style="${s}">${r.c}</td>
-      <td class="mono" style="${s}">${r.f}</td>
-      <td style="color:${c(r.lqd)};${s}">${f(r.lqd)}</td>
-      <td style="color:${c(r.hyg)};${s}">${f(r.hyg)}</td>
+  const topSep='border-top:.5px solid rgba(255,255,255,.08);';
+  document.getElementById('summaryTbody').innerHTML=rows.map((r,i)=>{
+    const s=r.total?topSep:'';
+    const dim=r.indent?'color:var(--t2);font-size:11px;':'';
+    const c=v=>v>=0?'var(--pos)':'var(--neg)';
+    const f=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+    const pl=r.indent?'padding-left:20px;':'';
+    return`<tr>
+      <td style="${s}${dim}${pl}">${r.c}</td>
+      <td class="mono" style="${s}${dim}">${r.f}</td>
+      <td style="color:${c(r.lqd)};${s}${dim}">${f(r.lqd)}</td>
+      <td style="color:${c(r.hyg)};${s}${dim}">${f(r.hyg)}</td>
       <td style="color:${c(r.p)};${s}">${f(r.p)}</td>
     </tr>`;
   }).join('');
 }
 
-const C = { rate:'#534AB7', spread:'#1D9E75', carry:'#BA7517', convex:'#9E3D9E', total:'#888', ig:'#185FA5', hy:'#993C1D' };
-const LY = {
-  paper_bgcolor:'transparent', plot_bgcolor:'transparent',
-  margin:{ l:44, r:20, t:10, b:40 },
-  font:{ family:'-apple-system,sans-serif', size:11, color:'#8b90a0' },
-  xaxis:{ showgrid:false, tickcolor:'transparent', linecolor:'rgba(255,255,255,.08)' },
-  yaxis:{ gridcolor:'rgba(255,255,255,.05)', tickcolor:'transparent', linecolor:'rgba(255,255,255,.08)' },
-  legend:{ bgcolor:'transparent' },
-  hovermode:'x unified',
-};
+const C={rate:'#534AB7',rate2:'#8B80E0',spread:'#1D9E75',carry:'#BA7517',convex:'#9E3D9E',total:'#888',ig:'#185FA5',hy:'#993C1D'};
+const LY={paper_bgcolor:'transparent',plot_bgcolor:'transparent',
+  margin:{l:44,r:20,t:10,b:40},
+  font:{family:'-apple-system,sans-serif',size:11,color:'#8b90a0'},
+  xaxis:{showgrid:false,tickcolor:'transparent',linecolor:'rgba(255,255,255,.08)'},
+  yaxis:{gridcolor:'rgba(255,255,255,.05)',tickcolor:'transparent',linecolor:'rgba(255,255,255,.08)'},
+  legend:{bgcolor:'transparent'},hovermode:'x unified'};
 
-function mkLine(name, x, y, color, dash) {
-  return { x, y, name, mode:'lines', line:{ color, width:1.5, dash: dash||'solid' },
-           hovertemplate:'%{y:.2f}%<extra>' + name + '</extra>' };
+function mkLine(name,x,y,color,dash,width){
+  return{x,y,name,mode:'lines',line:{color,width:width||1.5,dash:dash||'solid'},
+    hovertemplate:'%{y:.2f}%<extra>'+name+'</extra>'};
 }
-function mkBar(name, x, y, color) {
-  return { x, y, name, type:'bar', marker:{ color },
-           hovertemplate:'%{y:.3f}%<extra>' + name + '</extra>' };
+function mkBar(name,x,y,color){
+  return{x,y,name,type:'bar',marker:{color},hovertemplate:'%{y:.3f}%<extra>'+name+'</extra>'};
 }
 
-function buildCumChart() {
-  let cr=0, cs=0, cc=0, cx=0, ct=0;
-  const R=[], S=[], C2=[], X=[], T=[];
-  DATA.lqd.forEach((_, i) => {
-    cr += wLQD*DATA.lqd[i].rate      + wHYG*DATA.hyg[i].rate;
-    cs += wLQD*DATA.lqd[i].spread    + wHYG*DATA.hyg[i].spread;
-    cc += wLQD*DATA.lqd[i].carry     + wHYG*DATA.hyg[i].carry;
-    cx += wLQD*DATA.lqd[i].convexity + wHYG*DATA.hyg[i].convexity;
-    ct += wLQD*DATA.lqd[i].total     + wHYG*DATA.hyg[i].total;
-    R.push(+cr.toFixed(3)); S.push(+cs.toFixed(3));
-    C2.push(+cc.toFixed(3)); X.push(+cx.toFixed(3)); T.push(+ct.toFixed(3));
+function buildCumChart(){
+  let cr=0,crn=0,crf=0,cs=0,cc=0,cx=0,ct=0;
+  const R=[],RN=[],RF=[],S=[],Ca=[],X=[],T=[];
+  DATA.lqd.forEach((_,i)=>{
+    cr+=wLQD*DATA.lqd[i].rate+wHYG*DATA.hyg[i].rate;
+    crn+=wLQD*DATA.lqd[i].rate_near+wHYG*DATA.hyg[i].rate_near;
+    crf+=wLQD*DATA.lqd[i].rate_far+wHYG*DATA.hyg[i].rate_far;
+    cs+=wLQD*DATA.lqd[i].spread+wHYG*DATA.hyg[i].spread;
+    cc+=wLQD*DATA.lqd[i].carry+wHYG*DATA.hyg[i].carry;
+    cx+=wLQD*DATA.lqd[i].convexity+wHYG*DATA.hyg[i].convexity;
+    ct+=wLQD*DATA.lqd[i].total+wHYG*DATA.hyg[i].total;
+    R.push(+cr.toFixed(3));RN.push(+crn.toFixed(3));RF.push(+crf.toFixed(3));
+    S.push(+cs.toFixed(3));Ca.push(+cc.toFixed(3));X.push(+cx.toFixed(3));T.push(+ct.toFixed(3));
   });
-  Plotly.newPlot('chartDiv', [
-    mkLine('Rate',      DATA.labels, R,  C.rate),
-    mkLine('Spread',    DATA.labels, S,  C.spread),
-    mkLine('Carry',     DATA.labels, C2, C.carry),
-    mkLine('Convexity', DATA.labels, X,  C.convex),
-    mkLine('Total',     DATA.labels, T,  C.total, 'dash'),
-  ], { ...LY, yaxis:{ ...LY.yaxis, ticksuffix:'%' } }, { responsive:true, displayModeBar:false });
+  Plotly.newPlot('chartDiv',[
+    // Main components — solid medium lines
+    {x:DATA.labels,y:R, name:'Rate (total)', mode:'lines',
+     line:{color:C.rate,  width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Rate total</extra>'},
+    {x:DATA.labels,y:S, name:'Spread',       mode:'lines',
+     line:{color:C.spread,width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Spread</extra>'},
+    {x:DATA.labels,y:Ca,name:'Carry',        mode:'lines',
+     line:{color:C.carry, width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Carry</extra>'},
+    {x:DATA.labels,y:X, name:'Convexity',    mode:'lines',
+     line:{color:C.convex,width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Convexity</extra>'},
+    // KRD sub-components — thin dashed lines
+    {x:DATA.labels,y:RN,name:'Rate near node',mode:'lines',
+     line:{color:C.rate2, width:0.9,dash:'dot'},     opacity:0.8,
+     hovertemplate:'%{y:.2f}%<extra>Rate near</extra>'},
+    {x:DATA.labels,y:RF,name:'Rate far node', mode:'lines',
+     line:{color:'#9080FF',width:0.9,dash:'dashdot'}, opacity:0.8,
+     hovertemplate:'%{y:.2f}%<extra>Rate far</extra>'},
+    // Total — bold solid white-ish
+    {x:DATA.labels,y:T, name:'Total',         mode:'lines',
+     line:{color:'#d0d4e0',width:2.5,dash:'solid'},
+     hovertemplate:'%{y:.2f}%<extra>Total</extra>'},
+  ],{...LY,yaxis:{...LY.yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
 }
 
-function buildWeeklyChart() {
-  const pR=[], pS=[], pC=[], pX=[];
-  DATA.lqd.forEach((_, i) => {
-    pR.push(+(wLQD*DATA.lqd[i].rate      + wHYG*DATA.hyg[i].rate     ).toFixed(4));
-    pS.push(+(wLQD*DATA.lqd[i].spread    + wHYG*DATA.hyg[i].spread   ).toFixed(4));
-    pC.push(+(wLQD*DATA.lqd[i].carry     + wHYG*DATA.hyg[i].carry    ).toFixed(4));
-    pX.push(+(wLQD*DATA.lqd[i].convexity + wHYG*DATA.hyg[i].convexity).toFixed(4));
+function buildWeeklyChart(){
+  const pR=[],pS=[],pC=[],pX=[];
+  DATA.lqd.forEach((_,i)=>{
+    pR.push(+(wLQD*DATA.lqd[i].rate+wHYG*DATA.hyg[i].rate).toFixed(4));
+    pS.push(+(wLQD*DATA.lqd[i].spread+wHYG*DATA.hyg[i].spread).toFixed(4));
+    pC.push(+(wLQD*DATA.lqd[i].carry+wHYG*DATA.hyg[i].carry).toFixed(4));
+    pX.push(+(wLQD*DATA.lqd[i].convexity+wHYG*DATA.hyg[i].convexity).toFixed(4));
   });
-  Plotly.newPlot('chartDiv', [
-    mkBar('Rate',      DATA.labels, pR, 'rgba(83,74,183,.75)'),
-    mkBar('Spread',    DATA.labels, pS, 'rgba(29,158,117,.75)'),
-    mkBar('Carry',     DATA.labels, pC, 'rgba(186,117,23,.75)'),
-    mkBar('Convexity', DATA.labels, pX, 'rgba(158,61,158,.75)'),
-  ], { ...LY, barmode:'stack', yaxis:{ ...LY.yaxis, ticksuffix:'%' } }, { responsive:true, displayModeBar:false });
+  Plotly.newPlot('chartDiv',[
+    mkBar('Rate',      DATA.labels,pR,'rgba(83,74,183,.75)'),
+    mkBar('Spread',    DATA.labels,pS,'rgba(29,158,117,.75)'),
+    mkBar('Carry',     DATA.labels,pC,'rgba(186,117,23,.75)'),
+    mkBar('Convexity', DATA.labels,pX,'rgba(158,61,158,.75)'),
+  ],{...LY,barmode:'stack',yaxis:{...LY.yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
 }
 
-function buildOASChart() {
-  Plotly.newPlot('chartDiv', [
-    { x:DATA.oas_dates, y:DATA.lqd_oas, name:'LQD OAS', mode:'lines',
-      line:{ color:C.ig, width:1.5 }, hovertemplate:'%{y:.0f} bp<extra>LQD</extra>' },
-    { x:DATA.oas_dates, y:DATA.hyg_oas, name:'HYG OAS', mode:'lines',
-      line:{ color:C.hy, width:1.5 }, yaxis:'y2', hovertemplate:'%{y:.0f} bp<extra>HYG</extra>' },
-  ], {
-    ...LY,
-    yaxis:  { ...LY.yaxis, title:{ text:'LQD OAS (bp)', font:{ color:C.ig, size:11 } } },
-    yaxis2: { overlaying:'y', side:'right', gridcolor:'transparent', tickcolor:'transparent',
-               linecolor:'rgba(255,255,255,.08)', title:{ text:'HYG OAS (bp)', font:{ color:C.hy, size:11 } } },
-  }, { responsive:true, displayModeBar:false });
+function buildOASChart(){
+  Plotly.newPlot('chartDiv',[
+    {x:DATA.oas_dates,y:DATA.lqd_oas,name:'LQD OAS',mode:'lines',
+     line:{color:C.ig,width:1.5},hovertemplate:'%{y:.0f} bp<extra>LQD</extra>'},
+    {x:DATA.oas_dates,y:DATA.hyg_oas,name:'HYG OAS',mode:'lines',
+     line:{color:C.hy,width:1.5},yaxis:'y2',hovertemplate:'%{y:.0f} bp<extra>HYG</extra>'},
+  ],{...LY,
+    yaxis:{...LY.yaxis,title:{text:'LQD OAS (bp)',font:{color:C.ig,size:11}}},
+    yaxis2:{overlaying:'y',side:'right',gridcolor:'transparent',tickcolor:'transparent',
+            linecolor:'rgba(255,255,255,.08)',title:{text:'HYG OAS (bp)',font:{color:C.hy,size:11}}},
+  },{responsive:true,displayModeBar:false});
 }
 
-function buildRateChart() {
-  Plotly.newPlot('chartDiv', [
-    { x:DATA.oas_dates, y:DATA.rate_10y, name:'10y yield', mode:'lines',
-      line:{ color:C.rate, width:1.5 }, hovertemplate:'%{y:.2f}%<extra>10y yield</extra>' },
-  ], { ...LY, yaxis:{ ...LY.yaxis, ticksuffix:'%' } }, { responsive:true, displayModeBar:false });
+function buildCurveChart(){
+  const traces=[];
+  if(DATA.r2) traces.push({x:DATA.oas_dates,y:DATA.r2,name:'2y yield',mode:'lines',
+    line:{color:'#4A9EFF',width:1.5},hovertemplate:'%{y:.2f}%<extra>2y</extra>'});
+  if(DATA.r5) traces.push({x:DATA.oas_dates,y:DATA.r5,name:'5y yield',mode:'lines',
+    line:{color:C.rate,width:1.5},hovertemplate:'%{y:.2f}%<extra>5y</extra>'});
+  if(DATA.r30) traces.push({x:DATA.oas_dates,y:DATA.r30,name:'30y yield',mode:'lines',
+    line:{color:'#E05050',width:1.5},hovertemplate:'%{y:.2f}%<extra>30y</extra>'});
+  Plotly.newPlot('chartDiv',traces,
+    {...LY,yaxis:{...LY.yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
 }
 
-function redraw() {
-  const t = getTotals();
-  updateCards(t); updateMetrics(t); updateTable(t);
-  if      (currentTab === 'cum')    buildCumChart();
-  else if (currentTab === 'weekly') buildWeeklyChart();
-  else if (currentTab === 'oas')    buildOASChart();
-  else                              buildRateChart();
+function redraw(){
+  const t=getTotals();
+  updateCards(t);updateMetrics(t);updateTable(t);
+  if(currentTab==='cum')buildCumChart();
+  else if(currentTab==='weekly')buildWeeklyChart();
+  else if(currentTab==='oas')buildOASChart();
+  else buildCurveChart();
 }
 
-function onSlider(which, val) {
-  const v = parseInt(val) / 100;
-  if (which === 'lqd') { wLQD = v; wHYG = Math.max(0, 1-v); document.getElementById('hygSlider').value = Math.round(wHYG*100); }
-  else                 { wHYG = v; wLQD = Math.max(0, 1-v); document.getElementById('lqdSlider').value = Math.round(wLQD*100); }
+function onSlider(which,val){
+  const v=parseInt(val)/100;
+  if(which==='lqd'){wLQD=v;wHYG=Math.max(0,1-v);document.getElementById('hygSlider').value=Math.round(wHYG*100);}
+  else{wHYG=v;wLQD=Math.max(0,1-v);document.getElementById('lqdSlider').value=Math.round(wLQD*100);}
   redraw();
 }
 
-function switchTab(tab, btn) {
-  currentTab = tab;
-  document.querySelectorAll('.tab').forEach(b => b.classList.remove('active'));
+function switchTab(tab,btn){
+  currentTab=tab;
+  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
-  document.getElementById('legCum').style.display  = (tab==='cum'||tab==='weekly') ? 'flex' : 'none';
-  document.getElementById('legOas').style.display  = tab === 'oas'  ? 'flex' : 'none';
-  document.getElementById('legRate').style.display = tab === 'rate' ? 'flex' : 'none';
+  document.getElementById('legCum').style.display=(tab==='cum'||tab==='weekly')?'flex':'none';
+  document.getElementById('legOas').style.display=tab==='oas'?'flex':'none';
+  document.getElementById('legCurve').style.display=tab==='curve'?'flex':'none';
   redraw();
 }
 
