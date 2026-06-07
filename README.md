@@ -1,60 +1,58 @@
-# \# Fixed Income Portfolio Attribution
+\# Fixed Income Portfolio Attribution
 
-# 
 
-# A fixed income portfolio attribution demo built with the Campisi framework.
 
-# 
+An interactive fixed income portfolio attribution dashboard built with the Campisi framework and Key Rate Duration (KRD).
 
-# \## What it does
 
-# 
 
-# Decomposes weekly portfolio returns into four components:
+\## What it does
 
-# \- \*\*Rate contribution\*\* — price impact from changes in the 10y Treasury yield
 
-# \- \*\*Spread contribution\*\* — price impact from changes in OAS
 
-# \- \*\*Carry\*\* — coupon income
+Decomposes portfolio returns into four components:
 
-# \- \*\*Convexity\*\* — second-order correction for large rate/spread moves
 
-# 
 
-# \## Data
+\- \*\*Rate contribution\*\* — broken down by key rate nodes using KRD interpolation
 
-# 
+&#x20; - LQD (IG): 5y and 30y nodes (DGS5 + DGS30)
 
-# Live data from FRED (ICE BofA OAS indices) and yfinance (^TNX), with automatic fallback to calibrated simulation if unavailable.
+&#x20; - HYG (HY): 2y and 5y nodes (DGS2 + ^IRX + DGS5)
 
-# 
+\- \*\*Spread contribution\*\* — price impact from OAS changes (−Duration × ΔOAS)
 
-# Proxies used: LQD (investment grade) and HYG (high yield).
+\- \*\*Carry\*\* — weekly coupon income
 
-# 
+\- \*\*Convexity\*\* — second-order correction for large rate/spread moves
 
-# \## Usage
 
-# 
 
-# ```bash
+Portfolio weights are adjustable in real time via sliders. Four chart views: cumulative attribution, weekly stacked bars, OAS levels, and yield curve (2y/5y/30y).
 
-# pip install pandas numpy requests yfinance
 
-# python fetch\_and\_build\_v3.py
 
-# ```
+\## Usage
 
-# 
 
-# Generates a self-contained HTML dashboard. Open in any browser — no server needed.
 
-# 
+```bash
 
-# \## Stack
+pip install pandas numpy requests yfinance
 
-# 
+python fetch\_and\_build\_v4.py
 
-# Python · Plotly.js · FRED API · yfinance
+```
+
+
+
+Generates a self-contained HTML file. Open in any browser — no server needed. Data from FRED (OAS indices + DGS2/5/30) with automatic fallback to yfinance and calibrated simulation.
+
+
+
+\## Stack
+
+
+
+Python · Plotly.js · FRED API · yfinance
 
