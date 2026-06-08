@@ -235,6 +235,13 @@ tr:last-child td{border-bottom:none;font-weight:500}
 .sub-row td:first-child{padding-left:20px}
 .mono{font-family:"SF Mono","Fira Code",monospace;font-size:11px;color:var(--t2)}
 .note{font-size:11px;color:var(--t3);margin-top:.75rem}
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:1rem}
+.rc{background:var(--bg3);border:.5px solid var(--bdr);border-radius:var(--r);padding:11px 13px}
+.rc-lbl{font-size:11px;color:var(--t2);margin-bottom:5px}
+.rc-val{font-size:17px;font-weight:500;color:var(--t)}
+.rc-sub{font-size:11px;color:var(--t2);margin-top:2px}
+.risk-bar{height:8px;background:var(--bg2);border-radius:4px;margin-top:8px;overflow:hidden}
+.risk-bar-fill{height:100%;border-radius:4px}
 </style>
 </head>
 <body>
@@ -330,6 +337,25 @@ tr:last-child td{border-bottom:none;font-weight:500}
   <p class="note">Source: __DATA_SOURCE__ &nbsp;·&nbsp; Generated __GENERATED__</p>
 </div>
 
+<div class="panel">
+  <p class="plbl">Risk metrics</p>
+  <div class="tabs">
+    <button class="tab active" onclick="switchRisk('snapshot',this)">Point-in-time</button>
+    <button class="tab" onclick="switchRisk('dts',this)">Rolling DTS</button>
+    <button class="tab" onclick="switchRisk('dd',this)">Drawdown</button>
+  </div>
+  <div id="riskSnapshot">
+    <div class="risk-grid" id="riskCards"></div>
+    <table style="margin-top:1rem" id="riskTable">
+      <thead><tr>
+        <th>Metric</th><th>Formula</th><th>LQD</th><th>HYG</th><th>Portfolio (60/40)</th>
+      </tr></thead>
+      <tbody id="riskTbody"></tbody>
+    </table>
+  </div>
+  <div id="riskChart" style="display:none;width:100%;height:220px"></div>
+</div>
+
 <script>
 const DATA = __DATA_JSON__;
 let wLQD=0.60, wHYG=0.40, currentTab='cum';
@@ -359,11 +385,12 @@ function makeBar(id,label,val,color,small){
   const h=small?3:4;
   const pct=Math.min(100,Math.abs(val)/3*100);
   const vc=val>=0?'var(--pos)':'var(--neg)';
-  document.getElementById(id).innerHTML=`
-    <div class="ab-row"><span style="font-size:${small?'11':'12'}px;color:var(--t2)">${label}</span>
-      <span style="color:${vc};font-size:${small?'11':'12'}px">${val>=0?'+':''}${val.toFixed(2)}%</span></div>
-    <div class="ab-track" style="height:${h}px">
-      <div class="ab-fill" style="width:${pct}%;background:${color}"></div></div>`;
+  const sign=val>=0?'+':'';
+  document.getElementById(id).innerHTML=
+    '<div class="ab-row"><span style="font-size:'+(small?'11':'12')+'px;color:var(--t2)">'+label+'</span>'+
+    '<span style="color:'+vc+';font-size:'+(small?'11':'12')+'px">'+sign+val.toFixed(2)+'%</span></div>'+
+    '<div class="ab-track" style="height:'+h+'px">'+
+    '<div class="ab-fill" style="width:'+pct+'%;background:'+color+'"></div></div>';
 }
 
 function updateCards(t){
@@ -398,12 +425,13 @@ function updateMetrics(t){
     {l:'Carry',             v:'+'+t.port.carry.toFixed(2)+'%',                           s:'Coupon income',    p:true},
     {l:'Convexity',         v:(t.port.convexity>=0?'+':'')+t.port.convexity.toFixed(2)+'%', s:'½·C·(Δr̄+ΔOAS)²', p:t.port.convexity>=0},
   ];
-  document.getElementById('metrics').innerHTML=items.map(m=>`
-    <div class="mc">
-      <div class="mc-lbl">${m.l}</div>
-      <div class="mc-val ${m.p?'pos':'neg'}">${m.v}</div>
-      <div class="mc-sub ${m.p?'pos':'neg'}">${m.s}</div>
-    </div>`).join('');
+  document.getElementById('metrics').innerHTML=items.map(function(m){
+    return '<div class="mc">'+
+      '<div class="mc-lbl">'+m.l+'</div>'+
+      '<div class="mc-val '+(m.p?'pos':'neg')+'">'+m.v+'</div>'+
+      '<div class="mc-sub '+(m.p?'pos':'neg')+'">'+m.s+'</div>'+
+      '</div>';
+  }).join('');
 }
 
 function updateTable(t){
@@ -425,13 +453,13 @@ function updateTable(t){
     const c=v=>v>=0?'var(--pos)':'var(--neg)';
     const f=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
     const pl=r.indent?'padding-left:20px;':'';
-    return`<tr>
-      <td style="${s}${dim}${pl}">${r.c}</td>
-      <td class="mono" style="${s}${dim}">${r.f}</td>
-      <td style="color:${c(r.lqd)};${s}${dim}">${f(r.lqd)}</td>
-      <td style="color:${c(r.hyg)};${s}${dim}">${f(r.hyg)}</td>
-      <td style="color:${c(r.p)};${s}">${f(r.p)}</td>
-    </tr>`;
+    return '<tr>'+
+      '<td style="'+s+dim+pl+'">'+r.c+'</td>'+
+      '<td class="mono" style="'+s+dim+'">'+r.f+'</td>'+
+      '<td style="color:'+c(r.lqd)+';'+s+dim+'">'+f(r.lqd)+'</td>'+
+      '<td style="color:'+c(r.hyg)+';'+s+dim+'">'+f(r.hyg)+'</td>'+
+      '<td style="color:'+c(r.p)+';'+s+'">'+f(r.p)+'</td>'+
+      '</tr>';
   }).join('');
 }
 
@@ -530,9 +558,137 @@ function buildCurveChart(){
     {...LY,yaxis:{...LY.yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
 }
 
-function redraw(){
+// ── Risk panel ────────────────────────────────────────────────────────────────
+let currentRiskTab = 'snapshot';
+
+function portRisk(w_lqd, w_hyg) {
+  const R = DATA.risk;
+  const dts   = w_lqd*R.lqd.dts   + w_hyg*R.hyg.dts;
+  const dv01  = w_lqd*R.lqd.dv01  + w_hyg*R.hyg.dv01;
+  const svar  = w_lqd*R.lqd.svar_10d  + w_hyg*R.hyg.svar_10d;
+  const scvar = w_lqd*R.lqd.scvar_10d + w_hyg*R.hyg.scvar_10d;
+  const rc_lqd = w_lqd*R.lqd.dts / (w_lqd*R.lqd.dts + w_hyg*R.hyg.dts + 1e-10);
+  return { dts, dv01, svar, scvar, rc_lqd: rc_lqd*100, rc_hyg: (1-rc_lqd)*100 };
+}
+
+function updateRiskPanel() {
+  const R = DATA.risk;
+  const p = portRisk(wLQD, wHYG);
+
+  // Metric cards
+  const cards = [
+    { l:'Portfolio DTS',       v:p.dts.toFixed(0)+' bp·yr', s:'Duration × OAS' },
+    { l:'Portfolio DV01',      v:'$'+p.dv01.toFixed(0),     s:'Per $1M notional' },
+    { l:'Spread VaR (10d 95%)',v:p.svar.toFixed(2)+'%',     s:'Historical simulation' },
+    { l:'Spread CVaR (10d)',   v:p.scvar.toFixed(2)+'%',    s:'Expected shortfall' },
+    { l:'IG risk contrib',     v:p.rc_lqd.toFixed(1)+'%',   s:'DTS-weighted' },
+    { l:'HY risk contrib',     v:p.rc_hyg.toFixed(1)+'%',   s:'DTS-weighted' },
+  ];
+  document.getElementById('riskCards').innerHTML = cards.map(function(c){
+    return '<div class="rc">'+
+      '<div class="rc-lbl">'+c.l+'</div>'+
+      '<div class="rc-val">'+c.v+'</div>'+
+      '<div class="rc-sub">'+c.s+'</div>'+
+      '</div>';
+  }).join('');
+
+  // Risk contribution bar
+  document.getElementById('riskCards').innerHTML +=
+    '<div class="rc" style="grid-column:1/-1">'+
+      '<div class="rc-lbl">Risk contribution split (DTS-weighted) — IG vs HY</div>'+
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+
+        '<span style="font-size:12px;color:var(--ig);width:40px">'+p.rc_lqd.toFixed(1)+'%</span>'+
+        '<div style="flex:1;height:10px;background:var(--bg3);border-radius:5px;overflow:hidden">'+
+          '<div style="width:'+p.rc_lqd+'%;height:100%;background:linear-gradient(90deg,var(--ig),var(--hy));border-radius:5px"></div>'+
+        '</div>'+
+        '<span style="font-size:12px;color:var(--hy);width:40px;text-align:right">'+p.rc_hyg.toFixed(1)+'%</span>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:2px">'+
+        '<span>LQD (IG)</span><span>HYG (HY)</span>'+
+      '</div>'+
+    '</div>';
+
+  // Risk table
+  const rows = [
+    { m:'DTS',               f:'Dur × OAS',          lqd:R.lqd.dts.toFixed(0)+' bp·yr',   hyg:R.hyg.dts.toFixed(0)+' bp·yr',   port:p.dts.toFixed(0)+' bp·yr' },
+    { m:'DV01 (total)',      f:'Dur × 0.0001 × $1M', lqd:'$'+R.lqd.dv01,                  hyg:'$'+R.hyg.dv01,                   port:'$'+p.dv01.toFixed(0) },
+    { m:'  DV01 near node',  f:'KRD_near × 0.0001',  lqd:'$'+R.lqd.dv01_5+' (5y)',        hyg:'$'+R.hyg.dv01_2+' (2y)',         port:'—', indent:true },
+    { m:'  DV01 far node',   f:'KRD_far × 0.0001',   lqd:'$'+R.lqd.dv01_30+' (30y)',      hyg:'$'+R.hyg.dv01_5+' (5y)',         port:'—', indent:true },
+    { m:'Spread VaR 10d 95%',f:'Hist sim √(10/5)',   lqd:R.lqd.svar_10d.toFixed(2)+'%',   hyg:R.hyg.svar_10d.toFixed(2)+'%',   port:p.svar.toFixed(2)+'%' },
+    { m:'Spread CVaR 10d',   f:'E[loss | > VaR]',    lqd:R.lqd.scvar_10d.toFixed(2)+'%',  hyg:R.hyg.scvar_10d.toFixed(2)+'%',  port:p.scvar.toFixed(2)+'%' },
+    { m:'Max drawdown',      f:'Peak-to-trough',      lqd:R.lqd.mdd.toFixed(2)+'%',        hyg:R.hyg.mdd.toFixed(2)+'%',        port:'—' },
+  ];
+  const sep='border-top:.5px solid rgba(255,255,255,.08);';
+  document.getElementById('riskTbody').innerHTML = rows.map((r,i)=>{
+    const dim = r.indent ? 'color:var(--t2);font-size:11px;' : '';
+    const pl  = r.indent ? 'padding-left:18px;' : '';
+    return '<tr>'+
+      '<td style="'+dim+pl+'">'+r.m+'</td>'+
+      '<td class="mono" style="'+dim+'">'+r.f+'</td>'+
+      '<td style="'+dim+'">'+r.lqd+'</td>'+
+      '<td style="'+dim+'">'+r.hyg+'</td>'+
+      '<td>'+r.port+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+function buildDTSChart() {
+  const R = DATA.risk;
+  const portDTS = DATA.risk.rolling_lqd_dts.map((v,i)=>
+    +(wLQD*v + wHYG*R.rolling_hyg_dts[i]).toFixed(1));
+  Plotly.newPlot('riskChart',[
+    {x:DATA.oas_dates, y:R.rolling_lqd_dts, name:'LQD DTS', mode:'lines',
+     line:{color:C.ig,width:1.5}, hovertemplate:'%{y:.0f} bp·yr<extra>LQD</extra>'},
+    {x:DATA.oas_dates, y:R.rolling_hyg_dts, name:'HYG DTS', mode:'lines',
+     line:{color:C.hy,width:1.5}, yaxis:'y2', hovertemplate:'%{y:.0f} bp·yr<extra>HYG</extra>'},
+    {x:DATA.oas_dates, y:portDTS, name:'Portfolio DTS', mode:'lines',
+     line:{color:'#d0d4e0',width:2,dash:'dash'}, hovertemplate:'%{y:.0f} bp·yr<extra>Portfolio</extra>'},
+  ],{...LY,
+    yaxis: {...LY.yaxis,title:{text:'LQD DTS (bp·yr)',font:{color:C.ig,size:11}}},
+    yaxis2:{overlaying:'y',side:'right',gridcolor:'transparent',tickcolor:'transparent',
+            linecolor:'rgba(255,255,255,.08)',title:{text:'HYG DTS (bp·yr)',font:{color:C.hy,size:11}}},
+  },{responsive:true,displayModeBar:false});
+}
+
+function buildDrawdownChart() {
+  const R = DATA.risk;
+  const portDD = R.lqd_dd.map((v,i) => +(wLQD*v + wHYG*R.hyg_dd[i]).toFixed(3));
+  Plotly.newPlot('riskChart',[
+    {x:DATA.labels, y:R.lqd_dd, name:'LQD', mode:'lines', fill:'tozeroy',
+     line:{color:C.ig,width:1}, fillcolor:'rgba(24,95,165,.15)',
+     hovertemplate:'%{y:.2f}%<extra>LQD</extra>'},
+    {x:DATA.labels, y:R.hyg_dd, name:'HYG', mode:'lines', fill:'tozeroy',
+     line:{color:C.hy,width:1}, fillcolor:'rgba(153,60,29,.15)',
+     hovertemplate:'%{y:.2f}%<extra>HYG</extra>'},
+    {x:DATA.labels, y:portDD, name:'Portfolio', mode:'lines',
+     line:{color:'#d0d4e0',width:2,dash:'dash'},
+     hovertemplate:'%{y:.2f}%<extra>Portfolio</extra>'},
+  ],{...LY,yaxis:{...LY.yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+function switchRisk(tab, btn) {
+  currentRiskTab = tab;
+  document.querySelectorAll('#riskSnapshot').forEach(el=>el.style.display='none');
+  document.getElementById('riskSnapshot').style.display = 'none';
+  document.getElementById('riskChart').style.display    = 'none';
+
+  document.querySelectorAll('.panel:last-child .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (tab === 'snapshot') {
+    document.getElementById('riskSnapshot').style.display = 'block';
+    updateRiskPanel();
+  } else {
+    document.getElementById('riskChart').style.display = 'block';
+    if (tab === 'dts') buildDTSChart();
+    else               buildDrawdownChart();
+  }
+}
+
+function redraw() {
   const t=getTotals();
   updateCards(t);updateMetrics(t);updateTable(t);
+  updateRiskPanel();
   if(currentTab==='cum')buildCumChart();
   else if(currentTab==='weekly')buildWeeklyChart();
   else if(currentTab==='oas')buildOASChart();
@@ -544,11 +700,15 @@ function onSlider(which,val){
   if(which==='lqd'){wLQD=v;wHYG=Math.max(0,1-v);document.getElementById('hygSlider').value=Math.round(wHYG*100);}
   else{wHYG=v;wLQD=Math.max(0,1-v);document.getElementById('lqdSlider').value=Math.round(wLQD*100);}
   redraw();
+  // Also refresh risk chart if visible
+  if(currentRiskTab==='dts') buildDTSChart();
+  else if(currentRiskTab==='dd') buildDrawdownChart();
 }
 
 function switchTab(tab,btn){
   currentTab=tab;
-  document.querySelectorAll('.tab').forEach(b=>b.classList.remove('active'));
+  // Only affect attribution panel tabs
+  document.querySelectorAll('.panel:nth-child(5) .tab').forEach(b=>b.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById('legCum').style.display=(tab==='cum'||tab==='weekly')?'flex':'none';
   document.getElementById('legOas').style.display=tab==='oas'?'flex':'none';
@@ -604,7 +764,7 @@ def main():
             if r30_use is None and r5_use  is not None: r30_use = r5_use  # rough proxy
             if r5_use  is None and r2_use  is not None: r5_use  = r2_use  # rough proxy
             if any(x is None for x in [r2_use, r5_use, r30_use]):
-              raise ValueError("Insufficient yield data even with yfinance")
+                raise ValueError("Insufficient yield data even with yfinance")
             df = pd.DataFrame({"ig":ig_oas,"hy":hy_oas,
                                 "r2":r2_use,"r5":r5_use,"r30":r30_use}).dropna()
             market = {"lqd_oas":df["ig"],"hyg_oas":df["hy"],
@@ -658,6 +818,97 @@ def main():
     print(f"  HYG: total={hyg_attr['total'].sum():.2f}%  "
           f"rate_near={hyg_attr['rate_near'].sum():.2f}%  rate_far={hyg_attr['rate_far'].sum():.2f}%")
 
+    # ── Risk metrics ────────────────────────────────────────────────────────────
+    # Using last observation for point-in-time metrics
+    lqd_oas_now = float(lqd_oas_w.iloc[-1])
+    hyg_oas_now = float(hyg_oas_w.iloc[-1])
+    lqd_dur     = ETF_PARAMS["LQD"]["duration"]
+    hyg_dur     = ETF_PARAMS["HYG"]["duration"]
+
+    # DTS = Duration × OAS (bp)
+    lqd_dts = lqd_dur * lqd_oas_now
+    hyg_dts = hyg_dur * hyg_oas_now
+
+    # DV01 per $1M notional = Duration × 0.0001 × $1M
+    NOTIONAL = 1_000_000
+    lqd_dv01 = lqd_dur * 0.0001 * NOTIONAL
+    hyg_dv01 = hyg_dur * 0.0001 * NOTIONAL
+
+    # KRD DV01 per $1M — split by node
+    lqd_dv01_5  = ETF_PARAMS["LQD"]["krd_near"] * 0.0001 * NOTIONAL
+    lqd_dv01_30 = ETF_PARAMS["LQD"]["krd_far"]  * 0.0001 * NOTIONAL
+    hyg_dv01_2  = ETF_PARAMS["HYG"]["krd_near"] * 0.0001 * NOTIONAL
+    hyg_dv01_5  = ETF_PARAMS["HYG"]["krd_far"]  * 0.0001 * NOTIONAL
+
+    # Spread VaR (historical, 95%, 10-day) using weekly OAS changes
+    # OAS change series in bp
+    doas_lqd = lqd_oas_w.diff().dropna()
+    doas_hyg = hyg_oas_w.diff().dropna()
+
+    def spread_var(doas_bp, duration, conf=0.95, holding_days=10, periods_per_year=52):
+        # Weekly OAS vol → spread P&L vol
+        spread_pnl = -duration * doas_bp / 10000 * 100   # % return
+        pct_var = np.percentile(spread_pnl, (1-conf)*100)
+        # Scale to 10-day via sqrt(10/5) [weekly ≈ 5 trading days]
+        var_10d = -pct_var * np.sqrt(holding_days / 5)
+        cvar_10d = -spread_pnl[spread_pnl <= pct_var].mean() * np.sqrt(holding_days / 5)
+        return round(float(var_10d), 3), round(float(cvar_10d), 3)
+
+    lqd_svar, lqd_scvar = spread_var(doas_lqd, lqd_dur)
+    hyg_svar, hyg_scvar = spread_var(doas_hyg, hyg_dur)
+
+    # Rolling DTS (weekly)
+    rolling_lqd_dts = (lqd_oas_w * lqd_dur).tolist()
+    rolling_hyg_dts = (hyg_oas_w * hyg_dur).tolist()
+
+    # IG vs HY risk contribution ratio (DTS-weighted)
+    def risk_contrib(w_lqd, w_hyg, dts_lqd, dts_hyg):
+        total = w_lqd * dts_lqd + w_hyg * dts_hyg
+        if total == 0: return 0.5, 0.5
+        return round(w_lqd * dts_lqd / total, 3), round(w_hyg * dts_hyg / total, 3)
+
+    rc_lqd_60, rc_hyg_60 = risk_contrib(0.60, 0.40, lqd_dts, hyg_dts)
+
+    # Max drawdown on weekly total return
+    def max_drawdown(ret_series):
+        cum = (1 + ret_series/100).cumprod()
+        roll_max = cum.cummax()
+        dd = (cum - roll_max) / roll_max * 100
+        return round(float(dd.min()), 2), dd.tolist()
+
+    lqd_mdd, lqd_dd_series = max_drawdown(lqd_attr["total"])
+    hyg_mdd, hyg_dd_series = max_drawdown(hyg_attr["total"])
+
+    risk_metrics = {
+        "lqd": {
+            "dts":      round(lqd_dts, 1),
+            "dv01":     round(lqd_dv01, 0),
+            "dv01_5":   round(lqd_dv01_5, 0),
+            "dv01_30":  round(lqd_dv01_30, 0),
+            "svar_10d": lqd_svar,
+            "scvar_10d":lqd_scvar,
+            "mdd":      lqd_mdd,
+        },
+        "hyg": {
+            "dts":      round(hyg_dts, 1),
+            "dv01":     round(hyg_dv01, 0),
+            "dv01_2":   round(hyg_dv01_2, 0),
+            "dv01_5":   round(hyg_dv01_5, 0),
+            "svar_10d": hyg_svar,
+            "scvar_10d":hyg_scvar,
+            "mdd":      hyg_mdd,
+        },
+        "rolling_lqd_dts": [round(x,1) for x in rolling_lqd_dts],
+        "rolling_hyg_dts": [round(x,1) for x in rolling_hyg_dts],
+        "lqd_dd":  [round(x,3) for x in lqd_dd_series],
+        "hyg_dd":  [round(x,3) for x in hyg_dd_series],
+        "rc_lqd_60": rc_lqd_60,
+        "rc_hyg_60": rc_hyg_60,
+    }
+
+    print(f"  LQD DTS={lqd_dts:.0f}  DV01=${lqd_dv01:.0f}  SpreadVaR(10d)={lqd_svar:.2f}%  MDD={lqd_mdd:.2f}%")
+    print(f"  HYG DTS={hyg_dts:.0f}  DV01=${hyg_dv01:.0f}  SpreadVaR(10d)={hyg_svar:.2f}%  MDD={hyg_mdd:.2f}%")
+
     print("\n[3/3] Building HTML...")
     chart_labels = [d.strftime("%b %d") for d in lqd_attr.index]
     oas_dates    = [d.strftime("%Y-%m-%d") for d in lqd_oas_w.loc[common_a].index]
@@ -682,6 +933,7 @@ def main():
         "r30":       [round(float(x),3) for x in rates_w["r30"].loc[common_a]],
         "lqd":       to_list(lqd_attr),
         "hyg":       to_list(hyg_attr),
+        "risk":      risk_metrics,
         "source":    market["source"],
     })
 
