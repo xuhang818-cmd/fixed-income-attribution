@@ -1,4 +1,182 @@
-<!DOCTYPE html>
+"""
+Fixed Income Portfolio Attribution Dashboard — v5
+==================================================
+Key Rate Duration (KRD) implementation:
+  LQD (dur=8.4y): DGS5 + DGS30
+  HYG (dur=4.1y): DGS2 + DGS5
+
+New in v5:
+  - DV01 uses $10M notional
+  - Portfolio VaR with correlation (σ_p = √(w1²σ1² + w2²σ2² + 2·w1·w2·σ1·σ2·ρ))
+  - VaR vs weight curve data for interactive chart
+  - Light / dark theme toggle
+
+Fallback chain: FRED → yfinance → calibrated simulation
+Output: C:\\Users\\xuhan\\Downloads\\credit_attribution_dashboard.html
+"""
+
+import json, os
+from datetime import datetime
+import numpy as np
+import pandas as pd
+
+START_DATE  = "2025-01-01"
+END_DATE    = datetime.today().strftime("%Y-%m-%d")
+OUTPUT_FILE = r"C:\Users\xuhan\Downloads\credit_attribution_dashboard.html"
+
+# ── KRD parameters ─────────────────────────────────────────────────────────────
+# Linear interpolation: KRD_near = dur * (far_node - dur) / (far_node - near_node)
+#                       KRD_far  = dur * (dur - near_node) / (far_node - near_node)
+def calc_krd(duration, near_node, far_node):
+    span = far_node - near_node
+    krd_near = duration * (far_node - duration) / span
+    krd_far  = duration * (duration - near_node) / span
+    # Clip to avoid negative KRD when duration is outside the node range
+    krd_near = max(0.0, krd_near)
+    krd_far  = max(0.0, krd_far)
+    return krd_near, krd_far
+
+LQD_DUR, HYG_DUR = 8.4, 4.1
+LQD_KRD_5, LQD_KRD_30 = calc_krd(LQD_DUR, 5, 30)   # nodes: DGS5, DGS30
+HYG_KRD_2, HYG_KRD_5  = calc_krd(HYG_DUR, 2, 5)    # nodes: DGS2, DGS5
+
+ETF_PARAMS = {
+    "LQD": {
+        "duration": LQD_DUR, "coupon": 4.8, "convexity": 82.0,
+        "krd_near": LQD_KRD_5,  "krd_far": LQD_KRD_30,
+        "near_key": "r5",        "far_key": "r30",
+        "near_lbl": "5y",        "far_lbl": "30y",
+    },
+    "HYG": {
+        "duration": HYG_DUR, "coupon": 7.2, "convexity": 22.0,
+        "krd_near": HYG_KRD_2,  "krd_far": HYG_KRD_5,
+        "near_key": "r2",        "far_key": "r5",
+        "near_lbl": "2y",        "far_lbl": "5y",
+    },
+}
+
+print(f"KRD — LQD:  5y={LQD_KRD_5:.2f}  30y={LQD_KRD_30:.2f}  (sum={LQD_KRD_5+LQD_KRD_30:.2f}, dur={LQD_DUR})")
+print(f"KRD — HYG:  2y={HYG_KRD_2:.2f}   5y={HYG_KRD_5:.2f}   (sum={HYG_KRD_2+HYG_KRD_5:.2f}, dur={HYG_DUR})")
+
+# ── FRED fetcher ───────────────────────────────────────────────────────────────
+def fetch_fred_csv(series_id):
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    print(f"  [FRED] {series_id} ...", end=" ", flush=True)
+    try:
+        df = pd.read_csv(url)
+        df.columns = df.columns.str.strip()
+        date_col = [c for c in df.columns if 'date' in c.lower()][0]
+        val_col  = [c for c in df.columns if c != date_col][0]
+        df = df.rename(columns={date_col: 'DATE', val_col: series_id})
+        df['DATE'] = pd.to_datetime(df['DATE'])
+        df = df.set_index('DATE').replace('.', np.nan).astype(float).dropna()
+        df = df.loc[START_DATE:END_DATE]
+        print(f"OK ({len(df)} obs)")
+        return df[series_id]
+    except Exception as e:
+        print(f"FAILED: {e}")
+        return None
+
+def fetch_yfinance_yields():
+    """
+    Fetch yield curve proxies from yfinance:
+      ^IRX = 13-week T-bill  → proxy for 2y
+      ^FVX = 5-year yield    → proxy for 5y
+      ^TYX = 30-year yield   → proxy for 30y
+    Note: ^IRX is annualised discount rate, divide by 100 to get decimal.
+    """
+    print("  [yfinance] ^IRX ^FVX ^TYX ...", end=" ", flush=True)
+    try:
+        import yfinance as yf
+        raw = yf.download(["^IRX", "^FVX", "^TYX"], start=START_DATE, end=END_DATE,
+                          auto_adjust=True, progress=False)["Close"]
+        # squeeze in case of MultiIndex
+        if hasattr(raw.columns, 'levels'):
+            raw = raw.droplevel(0, axis=1) if raw.columns.nlevels > 1 else raw
+        raw = raw.dropna(how="all")
+        if raw.empty or len(raw) < 10:
+            raise ValueError("No data")
+        print(f"OK ({len(raw)} rows)")
+        result = {}
+        if "^IRX" in raw.columns: result["r2"]  = raw["^IRX"].dropna()
+        if "^FVX" in raw.columns: result["r5"]  = raw["^FVX"].dropna()
+        if "^TYX" in raw.columns: result["r30"] = raw["^TYX"].dropna()
+        return result if result else None
+    except Exception as e:
+        print(f"FAILED: {e}")
+        return None
+
+def simulate_calibrated():
+    print("  [simulation] Calibrated simulation.")
+    dates = pd.date_range(START_DATE, END_DATE, freq="B")
+    n = len(dates)
+    rng = np.random.default_rng(42)
+
+    def sim_oas(base, vol, drift):
+        x = [base]
+        for _ in range(n-1): x.append(max(20, x[-1] + rng.normal(drift, vol)))
+        return pd.Series(x, index=dates)
+
+    def sim_rate(base, vol, drift=-0.003):
+        x = [base]
+        for _ in range(n-1): x.append(max(0.5, x[-1] + rng.normal(drift, vol)))
+        return pd.Series(x, index=dates)
+
+    return {
+        "lqd_oas": sim_oas(108, 3.5, -0.06),
+        "hyg_oas": sim_oas(345, 9.0, -0.10),
+        "r2":  sim_rate(4.80, 0.05),
+        "r5":  sim_rate(4.42, 0.04),
+        "r30": sim_rate(4.65, 0.03),
+        "source": "calibrated simulation",
+    }
+
+# ── Attribution engine ─────────────────────────────────────────────────────────
+def build_weekly(series):
+    return series.resample("W-FRI").last().dropna()
+
+def compute_attribution(oas_w, rates_w, duration, coupon, convexity,
+                         krd_near, krd_far, near_key, far_key, **_):
+    """
+    KRD-based attribution:
+      rate_near = −krd_near × Δr_near
+      rate_far  = −krd_far  × Δr_far
+      rate      = rate_near + rate_far
+      spread    = −duration × ΔOAS
+      carry     = coupon / 52
+      convexity = 0.5 × C × (mean_dr + ΔOAS)²
+    """
+    dOAS     = oas_w.diff().dropna() / 10000
+    dr_near  = rates_w[near_key].diff().dropna() / 100
+    dr_far   = rates_w[far_key].diff().dropna() / 100
+
+    common = dOAS.index.intersection(dr_near.index).intersection(dr_far.index)
+    dOAS    = dOAS.loc[common]
+    dr_near = dr_near.loc[common]
+    dr_far  = dr_far.loc[common]
+
+    carry      = coupon / 52
+    spread     = -duration  * dOAS    * 100
+    rate_near  = -krd_near  * dr_near * 100
+    rate_far   = -krd_far   * dr_far  * 100
+    rate_total = rate_near + rate_far
+
+    # Convexity: use weighted average rate change
+    dr_avg = (krd_near * dr_near + krd_far * dr_far) / (krd_near + krd_far + 1e-10)
+    convex = 0.5 * convexity * (dr_avg + dOAS) ** 2 * 100
+
+    return pd.DataFrame({
+        "carry":      carry,
+        "spread":     spread,
+        "rate":       rate_total,
+        "rate_near":  rate_near,
+        "rate_far":   rate_far,
+        "convexity":  convex,
+        "total":      carry + spread + rate_total + convex,
+    })
+
+# ── HTML ───────────────────────────────────────────────────────────────────────
+HTML = """<!DOCTYPE html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -84,8 +262,8 @@ tr:last-child td{border-bottom:none;font-weight:500}
 <body>
 <div class="topbar">
   <div class="topbar-left">
-    <h1>Fixed income portfolio attribution <span class="badge badge-yf">live · FRED+yf</span></h1>
-    <p class="sub">LQD (IG) &nbsp;·&nbsp; HYG (HY) &nbsp;·&nbsp; 2025-01-01 – 2026-06-08 &nbsp;·&nbsp; Campisi + KRD</p>
+    <h1>Fixed income portfolio attribution <span class="badge __BADGE_CLASS__">__DATA_LABEL__</span></h1>
+    <p class="sub">LQD (IG) &nbsp;·&nbsp; HYG (HY) &nbsp;·&nbsp; __START_DATE__ – __END_DATE__ &nbsp;·&nbsp; Campisi + KRD</p>
   </div>
   <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀ Light</button>
 </div>
@@ -97,9 +275,9 @@ tr:last-child td{border-bottom:none;font-weight:500}
   &nbsp;·&nbsp; <code>Carry = coupon ÷ 52</code>
   &nbsp;·&nbsp; <code>Convexity = ½ · C · (Δr̄ + ΔOAS)²</code><br>
   <span class="krd-note">
-    LQD nodes: KRD<sub>5y</sub> = 7.26 &nbsp;·&nbsp; KRD<sub>30y</sub> = 1.14
+    LQD nodes: KRD<sub>5y</sub> = __LQD_KRD_5__ &nbsp;·&nbsp; KRD<sub>30y</sub> = __LQD_KRD_30__
     &nbsp;&nbsp;|&nbsp;&nbsp;
-    HYG nodes: KRD<sub>2y</sub> = 1.23 &nbsp;·&nbsp; KRD<sub>5y</sub> = 2.87
+    HYG nodes: KRD<sub>2y</sub> = __HYG_KRD_2__ &nbsp;·&nbsp; KRD<sub>5y</sub> = __HYG_KRD_5__
   </span>
 </div>
 
@@ -176,7 +354,7 @@ tr:last-child td{border-bottom:none;font-weight:500}
     </tr></thead>
     <tbody id="summaryTbody"></tbody>
   </table>
-  <p class="note">Source: FRED (OAS) + yfinance/FRED (yields) &nbsp;·&nbsp; Generated 2026-06-08</p>
+  <p class="note">Source: __DATA_SOURCE__ &nbsp;·&nbsp; Generated __GENERATED__</p>
 </div>
 
 <div class="panel">
@@ -205,7 +383,7 @@ tr:last-child td{border-bottom:none;font-weight:500}
 </div>
 
 <script>
-const DATA = {"labels": ["Jan 10", "Jan 17", "Jan 24", "Jan 31", "Feb 07", "Feb 14", "Feb 21", "Feb 28", "Mar 07", "Mar 14", "Mar 21", "Mar 28", "Apr 04", "Apr 11", "Apr 18", "Apr 25", "May 02", "May 09", "May 16", "May 23", "May 30", "Jun 06", "Jun 13", "Jun 20", "Jun 27", "Jul 04", "Jul 11", "Jul 18", "Jul 25", "Aug 01", "Aug 08", "Aug 15", "Aug 22", "Aug 29", "Sep 05", "Sep 12", "Sep 19", "Sep 26", "Oct 03", "Oct 10", "Oct 17", "Oct 24", "Oct 31", "Nov 07", "Nov 14", "Nov 21", "Nov 28", "Dec 05", "Dec 12", "Dec 19", "Dec 26", "Jan 02", "Jan 09", "Jan 16", "Jan 23", "Jan 30", "Feb 06", "Feb 13", "Feb 20", "Feb 27", "Mar 06", "Mar 13", "Mar 20", "Mar 27", "Apr 03", "Apr 10", "Apr 17", "Apr 24", "May 01", "May 08", "May 15", "May 22", "May 29", "Jun 05"], "oas_dates": ["2025-01-10", "2025-01-17", "2025-01-24", "2025-01-31", "2025-02-07", "2025-02-14", "2025-02-21", "2025-02-28", "2025-03-07", "2025-03-14", "2025-03-21", "2025-03-28", "2025-04-04", "2025-04-11", "2025-04-18", "2025-04-25", "2025-05-02", "2025-05-09", "2025-05-16", "2025-05-23", "2025-05-30", "2025-06-06", "2025-06-13", "2025-06-20", "2025-06-27", "2025-07-04", "2025-07-11", "2025-07-18", "2025-07-25", "2025-08-01", "2025-08-08", "2025-08-15", "2025-08-22", "2025-08-29", "2025-09-05", "2025-09-12", "2025-09-19", "2025-09-26", "2025-10-03", "2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21", "2025-11-28", "2025-12-05", "2025-12-12", "2025-12-19", "2025-12-26", "2026-01-02", "2026-01-09", "2026-01-16", "2026-01-23", "2026-01-30", "2026-02-06", "2026-02-13", "2026-02-20", "2026-02-27", "2026-03-06", "2026-03-13", "2026-03-20", "2026-03-27", "2026-04-03", "2026-04-10", "2026-04-17", "2026-04-24", "2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29", "2026-06-05"], "lqd_oas": [83.0, 82.0, 80.0, 82.0, 84.0, 80.0, 81.0, 88.0, 89.0, 94.0, 92.0, 94.0, 114.0, 118.0, 111.0, 104.0, 106.0, 102.0, 93.0, 93.0, 91.0, 87.0, 88.0, 88.0, 88.0, 80.0, 83.0, 80.0, 78.0, 82.0, 80.0, 75.0, 77.0, 80.0, 79.0, 77.0, 74.0, 75.0, 75.0, 81.0, 80.0, 77.0, 80.0, 84.0, 83.0, 86.0, 82.0, 79.0, 80.0, 80.0, 79.0, 79.0, 78.0, 75.0, 73.0, 74.0, 76.0, 79.0, 78.0, 85.0, 84.0, 93.0, 88.0, 91.0, 86.0, 82.0, 80.0, 80.0, 81.0, 79.0, 75.0, 74.0, 73.0, 74.0], "hyg_oas": [281.0, 264.0, 260.0, 268.0, 267.0, 262.0, 278.0, 287.0, 297.0, 325.0, 321.0, 347.0, 445.0, 426.0, 402.0, 367.0, 360.0, 353.0, 316.0, 340.0, 331.0, 309.0, 318.0, 313.0, 302.0, 280.0, 297.0, 293.0, 284.0, 313.0, 294.0, 288.0, 288.0, 282.0, 283.0, 279.0, 272.0, 275.0, 280.0, 318.0, 304.0, 288.0, 294.0, 315.0, 307.0, 319.0, 295.0, 285.0, 291.0, 290.0, 286.0, 283.0, 274.0, 265.0, 268.0, 280.0, 287.0, 295.0, 286.0, 310.0, 313.0, 328.0, 324.0, 342.0, 317.0, 294.0, 283.0, 286.0, 277.0, 281.0, 280.0, 274.0, 272.0, 276.0], "r2": [4.213, 4.193, 4.205, 4.188, 4.228, 4.213, 4.197, 4.193, 4.197, 4.188, 4.185, 4.188, 4.155, 4.213, 4.205, 4.193, 4.208, 4.215, 4.237, 4.23, 4.232, 4.232, 4.24, 4.195, 4.197, 4.24, 4.237, 4.23, 4.245, 4.182, 4.133, 4.112, 4.088, 4.043, 3.91, 3.928, 3.878, 3.86, 3.858, 3.853, 3.832, 3.763, 3.718, 3.757, 3.788, 3.74, 3.697, 3.603, 3.525, 3.522, 3.543, 3.533, 3.513, 3.557, 3.582, 3.572, 3.59, 3.593, 3.595, 3.578, 3.57, 3.603, 3.618, 3.607, 3.607, 3.593, 3.6, 3.593, 3.575, 3.595, 3.588, 3.585, 3.588, 3.625], "r5": [4.593, 4.414, 4.428, 4.364, 4.334, 4.324, 4.258, 4.028, 4.093, 4.082, 4.008, 3.981, 3.709, 4.16, 3.942, 3.884, 3.932, 3.987, 4.064, 4.078, 3.979, 4.126, 4.024, 3.961, 3.828, 3.939, 3.992, 3.962, 3.952, 3.771, 3.83, 3.845, 3.759, 3.699, 3.583, 3.625, 3.691, 3.77, 3.708, 3.646, 3.592, 3.602, 3.717, 3.68, 3.735, 3.618, 3.6, 3.715, 3.751, 3.693, 3.697, 3.739, 3.757, 3.828, 3.839, 3.797, 3.755, 3.609, 3.65, 3.512, 3.715, 3.874, 4.012, 4.07, 3.948, 3.939, 3.838, 3.92, 4.021, 4.013, 4.258, 4.256, 4.149, 4.28], "r30": [4.965, 4.845, 4.848, 4.813, 4.69, 4.693, 4.669, 4.516, 4.616, 4.615, 4.596, 4.633, 4.388, 4.877, 4.809, 4.738, 4.795, 4.833, 4.899, 5.031, 4.929, 4.963, 4.915, 4.889, 4.845, 4.862, 4.957, 5.001, 4.929, 4.807, 4.855, 4.926, 4.884, 4.917, 4.775, 4.679, 4.756, 4.766, 4.714, 4.634, 4.603, 4.585, 4.67, 4.7, 4.747, 4.715, 4.665, 4.792, 4.858, 4.828, 4.82, 4.864, 4.819, 4.84, 4.833, 4.872, 4.855, 4.698, 4.725, 4.633, 4.755, 4.908, 4.96, 4.982, 4.89, 4.914, 4.885, 4.916, 4.966, 4.947, 5.128, 5.064, 4.993, 4.999], "lqd": [{"spread": -0.0, "carry": 0.0923, "rate": -1.5006, "rate_near": -1.3281, "rate_far": -0.1725, "convexity": 0.0131, "total": -1.3953}, {"spread": 0.084, "carry": 0.0923, "rate": 1.4362, "rate_near": 1.2991, "rate_far": 0.1371, "convexity": 0.0134, "total": 1.6259}, {"spread": 0.168, "carry": 0.0923, "rate": -0.105, "rate_near": -0.1016, "rate_far": -0.0034, "convexity": 0.0, "total": 0.1553}, {"spread": -0.168, "carry": 0.0923, "rate": 0.5045, "rate_near": 0.4645, "rate_far": 0.04, "convexity": 0.0007, "total": 0.4294}, {"spread": -0.168, "carry": 0.0923, "rate": 0.3582, "rate_near": 0.2177, "rate_far": 0.1405, "convexity": 0.0002, "total": 0.2828}, {"spread": 0.336, "carry": 0.0923, "rate": 0.0692, "rate_near": 0.0726, "rate_far": -0.0034, "convexity": 0.001, "total": 0.4984}, {"spread": -0.084, "carry": 0.0923, "rate": 0.5064, "rate_near": 0.479, "rate_far": 0.0274, "convexity": 0.001, "total": 0.5158}, {"spread": -0.588, "carry": 0.0923, "rate": 1.844, "rate_near": 1.6692, "rate_far": 0.1748, "convexity": 0.0092, "total": 1.3575}, {"spread": -0.084, "carry": 0.0923, "rate": -0.586, "rate_near": -0.4717, "rate_far": -0.1142, "convexity": 0.0026, "total": -0.5751}, {"spread": -0.42, "carry": 0.0923, "rate": 0.081, "rate_near": 0.0798, "rate_far": 0.0011, "convexity": 0.0007, "total": -0.246}, {"spread": 0.168, "carry": 0.0923, "rate": 0.5588, "rate_near": 0.5371, "rate_far": 0.0217, "convexity": 0.0031, "total": 0.8221}, {"spread": -0.168, "carry": 0.0923, "rate": 0.1537, "rate_near": 0.196, "rate_far": -0.0423, "convexity": 0.0, "total": 0.078}, {"spread": -1.68, "carry": 0.0923, "rate": 2.254, "rate_near": 1.9741, "rate_far": 0.2799, "convexity": 0.0019, "total": 0.6682}, {"spread": -0.336, "carry": 0.0923, "rate": -3.8318, "rate_near": -3.2732, "rate_far": -0.5586, "convexity": 0.1009, "total": -3.9746}, {"spread": 0.588, "carry": 0.0923, "rate": 1.6598, "rate_near": 1.5822, "rate_far": 0.0777, "convexity": 0.0294, "total": 2.3695}, {"spread": 0.588, "carry": 0.0923, "rate": 0.5021, "rate_near": 0.4209, "rate_far": 0.0811, "convexity": 0.0069, "total": 1.1893}, {"spread": -0.168, "carry": 0.0923, "rate": -0.4135, "rate_near": -0.3484, "rate_far": -0.0651, "convexity": 0.002, "total": -0.4872}, {"spread": 0.336, "carry": 0.0923, "rate": -0.4426, "rate_near": -0.3992, "rate_far": -0.0434, "convexity": 0.0001, "total": -0.0142}, {"spread": 0.756, "carry": 0.0923, "rate": -0.6342, "rate_near": -0.5588, "rate_far": -0.0754, "convexity": 0.0001, "total": 0.2142}, {"spread": -0.0, "carry": 0.0923, "rate": -0.2524, "rate_near": -0.1016, "rate_far": -0.1508, "convexity": 0.0004, "total": -0.1597}, {"spread": 0.168, "carry": 0.0923, "rate": 0.835, "rate_near": 0.7185, "rate_far": 0.1165, "convexity": 0.0058, "total": 1.1012}, {"spread": 0.336, "carry": 0.0923, "rate": -1.1057, "rate_near": -1.0669, "rate_far": -0.0388, "convexity": 0.0034, "total": -0.674}, {"spread": -0.084, "carry": 0.0923, "rate": 0.7951, "rate_near": 0.7403, "rate_far": 0.0548, "convexity": 0.0029, "total": 0.8064}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4869, "rate_near": 0.4572, "rate_far": 0.0297, "convexity": 0.0014, "total": 0.5806}, {"spread": -0.0, "carry": 0.0923, "rate": 1.0155, "rate_near": 0.9653, "rate_far": 0.0503, "convexity": 0.006, "total": 1.1138}, {"spread": 0.672, "carry": 0.0923, "rate": -0.825, "rate_near": -0.8056, "rate_far": -0.0194, "convexity": 0.0001, "total": -0.0606}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4932, "rate_near": -0.3847, "rate_far": -0.1085, "convexity": 0.0032, "total": -0.6496}, {"spread": 0.252, "carry": 0.0923, "rate": 0.1675, "rate_near": 0.2177, "rate_far": -0.0503, "convexity": 0.001, "total": 0.5128}, {"spread": 0.168, "carry": 0.0923, "rate": 0.1548, "rate_near": 0.0726, "rate_far": 0.0823, "convexity": 0.0006, "total": 0.4157}, {"spread": -0.336, "carry": 0.0923, "rate": 1.453, "rate_near": 1.3136, "rate_far": 0.1394, "convexity": 0.0072, "total": 1.2166}, {"spread": 0.168, "carry": 0.0923, "rate": -0.483, "rate_near": -0.4282, "rate_far": -0.0548, "convexity": 0.0006, "total": -0.2221}, {"spread": 0.42, "carry": 0.0923, "rate": -0.19, "rate_near": -0.1089, "rate_far": -0.0811, "convexity": 0.0003, "total": 0.3226}, {"spread": -0.168, "carry": 0.0923, "rate": 0.6721, "rate_near": 0.6242, "rate_far": 0.048, "convexity": 0.0015, "total": 0.5979}, {"spread": -0.252, "carry": 0.0923, "rate": 0.3978, "rate_near": 0.4355, "rate_far": -0.0377, "convexity": 0.0001, "total": 0.2382}, {"spread": 0.084, "carry": 0.0923, "rate": 1.0041, "rate_near": 0.8419, "rate_far": 0.1622, "convexity": 0.0069, "total": 1.1873}, {"spread": 0.168, "carry": 0.0923, "rate": -0.1951, "rate_near": -0.3048, "rate_far": 0.1097, "convexity": 0.0, "total": 0.0652}, {"spread": 0.252, "carry": 0.0923, "rate": -0.567, "rate_near": -0.479, "rate_far": -0.088, "convexity": 0.0006, "total": -0.2221}, {"spread": -0.084, "carry": 0.0923, "rate": -0.5848, "rate_near": -0.5734, "rate_far": -0.0114, "convexity": 0.0026, "total": -0.5739}, {"spread": -0.0, "carry": 0.0923, "rate": 0.5094, "rate_near": 0.45, "rate_far": 0.0594, "convexity": 0.0015, "total": 0.6032}, {"spread": -0.504, "carry": 0.0923, "rate": 0.5414, "rate_near": 0.45, "rate_far": 0.0914, "convexity": 0.0, "total": 0.1297}, {"spread": 0.084, "carry": 0.0923, "rate": 0.4273, "rate_near": 0.3919, "rate_far": 0.0354, "convexity": 0.0015, "total": 0.6052}, {"spread": 0.252, "carry": 0.0923, "rate": -0.052, "rate_near": -0.0726, "rate_far": 0.0206, "convexity": 0.0002, "total": 0.2925}, {"spread": -0.252, "carry": 0.0923, "rate": -0.9317, "rate_near": -0.8346, "rate_far": -0.0971, "convexity": 0.0081, "total": -1.0833}, {"spread": -0.336, "carry": 0.0923, "rate": 0.2343, "rate_near": 0.2685, "rate_far": -0.0343, "convexity": 0.0001, "total": -0.0094}, {"spread": 0.084, "carry": 0.0923, "rate": -0.4529, "rate_near": -0.3992, "rate_far": -0.0537, "convexity": 0.0008, "total": -0.2758}, {"spread": -0.252, "carry": 0.0923, "rate": 0.8857, "rate_near": 0.8491, "rate_far": 0.0366, "convexity": 0.0023, "total": 0.7283}, {"spread": 0.336, "carry": 0.0923, "rate": 0.1878, "rate_near": 0.1306, "rate_far": 0.0571, "convexity": 0.0016, "total": 0.6177}, {"spread": 0.252, "carry": 0.0923, "rate": -0.9797, "rate_near": -0.8346, "rate_far": -0.1451, "convexity": 0.0031, "total": -0.6323}, {"spread": -0.084, "carry": 0.0923, "rate": -0.3367, "rate_near": -0.2613, "rate_far": -0.0754, "convexity": 0.001, "total": -0.3273}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4552, "rate_near": 0.4209, "rate_far": 0.0343, "convexity": 0.0012, "total": 0.5487}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0199, "rate_near": -0.029, "rate_far": 0.0091, "convexity": 0.0, "total": 0.1564}, {"spread": -0.0, "carry": 0.0923, "rate": -0.3551, "rate_near": -0.3048, "rate_far": -0.0503, "convexity": 0.0007, "total": -0.262}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0792, "rate_near": -0.1306, "rate_far": 0.0514, "convexity": 0.0, "total": 0.0971}, {"spread": 0.252, "carry": 0.0923, "rate": -0.5393, "rate_near": -0.5153, "rate_far": -0.024, "convexity": 0.0005, "total": -0.1945}, {"spread": 0.168, "carry": 0.0923, "rate": -0.0718, "rate_near": -0.0798, "rate_far": 0.008, "convexity": 0.0001, "total": 0.1885}, {"spread": -0.084, "carry": 0.0923, "rate": 0.2603, "rate_near": 0.3048, "rate_far": -0.0446, "convexity": 0.0002, "total": 0.2688}, {"spread": -0.168, "carry": 0.0923, "rate": 0.3242, "rate_near": 0.3048, "rate_far": 0.0194, "convexity": 0.0001, "total": 0.2487}, {"spread": -0.252, "carry": 0.0923, "rate": 1.239, "rate_near": 1.0596, "rate_far": 0.1794, "convexity": 0.0057, "total": 1.0849}, {"spread": 0.084, "carry": 0.0923, "rate": -0.3284, "rate_near": -0.2976, "rate_far": -0.0308, "convexity": 0.0003, "total": -0.1518}, {"spread": -0.588, "carry": 0.0923, "rate": 1.1066, "rate_near": 1.0015, "rate_far": 0.1051, "convexity": 0.0016, "total": 0.6125}, {"spread": 0.084, "carry": 0.0923, "rate": -1.6127, "rate_near": -1.4733, "rate_far": -0.1394, "convexity": 0.0136, "total": -1.4228}, {"spread": -0.756, "carry": 0.0923, "rate": -1.3287, "rate_near": -1.154, "rate_far": -0.1748, "convexity": 0.0253, "total": -1.9672}, {"spread": 0.42, "carry": 0.0923, "rate": -1.061, "rate_near": -1.0015, "rate_far": -0.0594, "convexity": 0.0024, "total": -0.5463}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4461, "rate_near": -0.4209, "rate_far": -0.0251, "convexity": 0.0028, "total": -0.6029}, {"spread": 0.42, "carry": 0.0923, "rate": 0.9905, "rate_near": 0.8854, "rate_far": 0.1051, "convexity": 0.0116, "total": 1.5144}, {"spread": 0.336, "carry": 0.0923, "rate": 0.0379, "rate_near": 0.0653, "rate_far": -0.0274, "convexity": 0.0008, "total": 0.467}, {"spread": 0.168, "carry": 0.0923, "rate": 0.7661, "rate_near": 0.733, "rate_far": 0.0331, "convexity": 0.0051, "total": 1.0315}, {"spread": -0.0, "carry": 0.0923, "rate": -0.6305, "rate_near": -0.5951, "rate_far": -0.0354, "convexity": 0.0023, "total": -0.5359}, {"spread": -0.084, "carry": 0.0923, "rate": -0.7901, "rate_near": -0.733, "rate_far": -0.0571, "convexity": 0.0044, "total": -0.7774}, {"spread": 0.168, "carry": 0.0923, "rate": 0.0798, "rate_near": 0.0581, "rate_far": 0.0217, "convexity": 0.0004, "total": 0.3404}, {"spread": 0.336, "carry": 0.0923, "rate": -1.9849, "rate_near": -1.7781, "rate_far": -0.2068, "convexity": 0.0158, "total": -1.5408}, {"spread": 0.084, "carry": 0.0923, "rate": 0.0876, "rate_near": 0.0145, "rate_far": 0.0731, "convexity": 0.0002, "total": 0.2641}, {"spread": 0.084, "carry": 0.0923, "rate": 0.8577, "rate_near": 0.7766, "rate_far": 0.0811, "convexity": 0.0052, "total": 1.0391}, {"spread": -0.084, "carry": 0.0923, "rate": -0.9576, "rate_near": -0.9507, "rate_far": -0.0069, "convexity": 0.0063, "total": -0.943}], "hyg": [{"spread": -0.0, "carry": 0.1385, "rate": -0.5498, "rate_near": -0.0246, "rate_far": -0.5252, "convexity": 0.002, "total": -0.4094}, {"spread": 0.697, "carry": 0.1385, "rate": 0.5383, "rate_near": 0.0246, "rate_far": 0.5137, "convexity": 0.01, "total": 1.3838}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0549, "rate_near": -0.0148, "rate_far": -0.0402, "convexity": 0.0001, "total": 0.2476}, {"spread": -0.328, "carry": 0.1385, "rate": 0.2046, "rate_near": 0.0209, "rate_far": 0.1837, "convexity": 0.0001, "total": 0.0152}, {"spread": 0.041, "carry": 0.1385, "rate": 0.0369, "rate_near": -0.0492, "rate_far": 0.0861, "convexity": 0.0, "total": 0.2164}, {"spread": 0.205, "carry": 0.1385, "rate": 0.0472, "rate_near": 0.0185, "rate_far": 0.0287, "convexity": 0.0004, "total": 0.391}, {"spread": -0.656, "carry": 0.1385, "rate": 0.2091, "rate_near": 0.0197, "rate_far": 0.1894, "convexity": 0.0013, "total": -0.3071}, {"spread": -0.369, "carry": 0.1385, "rate": 0.665, "rate_near": 0.0049, "rate_far": 0.6601, "convexity": 0.0006, "total": 0.4351}, {"spread": -0.41, "carry": 0.1385, "rate": -0.1915, "rate_near": -0.0049, "rate_far": -0.1866, "convexity": 0.0024, "total": -0.4606}, {"spread": -1.148, "carry": 0.1385, "rate": 0.0426, "rate_near": 0.0111, "rate_far": 0.0316, "convexity": 0.008, "total": -0.9589}, {"spread": 0.164, "carry": 0.1385, "rate": 0.2161, "rate_near": 0.0037, "rate_far": 0.2124, "convexity": 0.0009, "total": 0.5195}, {"spread": -1.066, "carry": 0.1385, "rate": 0.0738, "rate_near": -0.0037, "rate_far": 0.0775, "convexity": 0.0064, "total": -0.8473}, {"spread": -4.018, "carry": 0.1385, "rate": 0.8212, "rate_near": 0.0406, "rate_far": 0.7806, "convexity": 0.0669, "total": -2.9914}, {"spread": 0.779, "carry": 0.1385, "rate": -1.3657, "rate_near": -0.0713, "rate_far": -1.2944, "convexity": 0.0023, "total": -0.446}, {"spread": 0.984, "carry": 0.1385, "rate": 0.6355, "rate_near": 0.0098, "rate_far": 0.6257, "convexity": 0.0172, "total": 1.7751}, {"spread": 1.435, "carry": 0.1385, "rate": 0.1812, "rate_near": 0.0148, "rate_far": 0.1665, "convexity": 0.0171, "total": 1.7718}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1562, "rate_near": -0.0185, "rate_far": -0.1378, "convexity": 0.0001, "total": 0.2694}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1665, "rate_near": -0.0086, "rate_far": -0.1579, "convexity": 0.0001, "total": 0.2591}, {"spread": 1.517, "carry": 0.1385, "rate": -0.2481, "rate_near": -0.0271, "rate_far": -0.221, "convexity": 0.0105, "total": 1.4179}, {"spread": -0.984, "carry": 0.1385, "rate": -0.0316, "rate_near": 0.0086, "rate_far": -0.0402, "convexity": 0.0067, "total": -0.8704}, {"spread": 0.369, "carry": 0.1385, "rate": 0.2817, "rate_near": -0.0025, "rate_far": 0.2841, "convexity": 0.0028, "total": 0.7919}, {"spread": 0.902, "carry": 0.1385, "rate": -0.4219, "rate_near": -0.0, "rate_far": -0.4219, "convexity": 0.0015, "total": 0.6201}, {"spread": -0.369, "carry": 0.1385, "rate": 0.2829, "rate_near": -0.0098, "rate_far": 0.2927, "convexity": 0.0, "total": 0.0524}, {"spread": 0.205, "carry": 0.1385, "rate": 0.2362, "rate_near": 0.0553, "rate_far": 0.1808, "convexity": 0.0013, "total": 0.5809}, {"spread": 0.451, "carry": 0.1385, "rate": 0.3792, "rate_near": -0.0025, "rate_far": 0.3817, "convexity": 0.0045, "total": 0.9732}, {"spread": 0.902, "carry": 0.1385, "rate": -0.3715, "rate_near": -0.0529, "rate_far": -0.3186, "convexity": 0.0018, "total": 0.6708}, {"spread": -0.697, "carry": 0.1385, "rate": -0.1484, "rate_near": 0.0037, "rate_far": -0.1521, "convexity": 0.0047, "total": -0.7023}, {"spread": 0.164, "carry": 0.1385, "rate": 0.0947, "rate_near": 0.0086, "rate_far": 0.0861, "convexity": 0.0004, "total": 0.3976}, {"spread": 0.369, "carry": 0.1385, "rate": 0.0103, "rate_near": -0.0184, "rate_far": 0.0287, "convexity": 0.0009, "total": 0.5187}, {"spread": -1.189, "carry": 0.1385, "rate": 0.597, "rate_near": 0.0775, "rate_far": 0.5195, "convexity": 0.0023, "total": -0.4513}, {"spread": 0.779, "carry": 0.1385, "rate": -0.1091, "rate_near": 0.0603, "rate_far": -0.1693, "convexity": 0.0029, "total": 0.8113}, {"spread": 0.246, "carry": 0.1385, "rate": -0.0172, "rate_near": 0.0258, "rate_far": -0.0431, "convexity": 0.0003, "total": 0.3676}, {"spread": -0.0, "carry": 0.1385, "rate": 0.2763, "rate_near": 0.0295, "rate_far": 0.2468, "convexity": 0.0005, "total": 0.4153}, {"spread": 0.246, "carry": 0.1385, "rate": 0.2276, "rate_near": 0.0553, "rate_far": 0.1722, "convexity": 0.0015, "total": 0.6135}, {"spread": -0.041, "carry": 0.1385, "rate": 0.4965, "rate_near": 0.1636, "rate_far": 0.3329, "convexity": 0.0014, "total": 0.5953}, {"spread": 0.164, "carry": 0.1385, "rate": -0.1427, "rate_near": -0.0221, "rate_far": -0.1205, "convexity": 0.0, "total": 0.1598}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1279, "rate_near": 0.0615, "rate_far": -0.1894, "convexity": 0.0002, "total": 0.2977}, {"spread": -0.123, "carry": 0.1385, "rate": -0.2046, "rate_near": 0.0221, "rate_far": -0.2267, "convexity": 0.0007, "total": -0.1884}, {"spread": -0.205, "carry": 0.1385, "rate": 0.1804, "rate_near": 0.0025, "rate_far": 0.1779, "convexity": 0.0, "total": 0.1139}, {"spread": -1.558, "carry": 0.1385, "rate": 0.1841, "rate_near": 0.0062, "rate_far": 0.1779, "convexity": 0.0124, "total": -1.2231}, {"spread": 0.574, "carry": 0.1385, "rate": 0.1808, "rate_near": 0.0258, "rate_far": 0.155, "convexity": 0.0037, "total": 0.897}, {"spread": 0.656, "carry": 0.1385, "rate": 0.0562, "rate_near": 0.0849, "rate_far": -0.0287, "convexity": 0.0033, "total": 0.854}, {"spread": -0.246, "carry": 0.1385, "rate": -0.2747, "rate_near": 0.0554, "rate_far": -0.3301, "convexity": 0.0018, "total": -0.3805}, {"spread": -0.861, "carry": 0.1385, "rate": 0.0582, "rate_near": -0.048, "rate_far": 0.1062, "convexity": 0.0042, "total": -0.6601}, {"spread": 0.328, "carry": 0.1385, "rate": -0.196, "rate_near": -0.0381, "rate_far": -0.1578, "convexity": 0.0001, "total": 0.2706}, {"spread": -0.492, "carry": 0.1385, "rate": 0.3948, "rate_near": 0.059, "rate_far": 0.3358, "convexity": 0.0001, "total": 0.0414}, {"spread": 0.984, "carry": 0.1385, "rate": 0.1046, "rate_near": 0.0529, "rate_far": 0.0517, "convexity": 0.0078, "total": 1.2348}, {"spread": 0.41, "carry": 0.1385, "rate": -0.2144, "rate_near": 0.1156, "rate_far": -0.3301, "convexity": 0.0003, "total": 0.3343}, {"spread": -0.246, "carry": 0.1385, "rate": -0.0074, "rate_near": 0.0959, "rate_far": -0.1033, "convexity": 0.0004, "total": -0.1145}, {"spread": 0.041, "carry": 0.1385, "rate": 0.1701, "rate_near": 0.0037, "rate_far": 0.1665, "convexity": 0.0003, "total": 0.3499}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0373, "rate_near": -0.0258, "rate_far": -0.0115, "convexity": 0.0001, "total": 0.2653}, {"spread": 0.123, "carry": 0.1385, "rate": -0.1082, "rate_near": 0.0123, "rate_far": -0.1205, "convexity": 0.0, "total": 0.1532}, {"spread": 0.369, "carry": 0.1385, "rate": -0.0271, "rate_near": 0.0246, "rate_far": -0.0517, "convexity": 0.0008, "total": 0.4812}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2579, "rate_near": -0.0541, "rate_far": -0.2038, "convexity": 0.0001, "total": 0.2497}, {"spread": -0.123, "carry": 0.1385, "rate": -0.0623, "rate_near": -0.0308, "rate_far": -0.0316, "convexity": 0.0002, "total": -0.0466}, {"spread": -0.492, "carry": 0.1385, "rate": 0.1328, "rate_near": 0.0123, "rate_far": 0.1205, "convexity": 0.0008, "total": -0.2199}, {"spread": -0.287, "carry": 0.1385, "rate": 0.0984, "rate_near": -0.0221, "rate_far": 0.1205, "convexity": 0.0002, "total": -0.0499}, {"spread": -0.328, "carry": 0.1385, "rate": 0.4153, "rate_near": -0.0037, "rate_far": 0.419, "convexity": 0.0, "total": 0.2258}, {"spread": 0.369, "carry": 0.1385, "rate": -0.1201, "rate_near": -0.0025, "rate_far": -0.1177, "convexity": 0.0004, "total": 0.3877}, {"spread": -0.984, "carry": 0.1385, "rate": 0.417, "rate_near": 0.0209, "rate_far": 0.3961, "convexity": 0.0021, "total": -0.4265}, {"spread": -0.123, "carry": 0.1385, "rate": -0.5728, "rate_near": 0.0098, "rate_far": -0.5826, "convexity": 0.0032, "total": -0.5541}, {"spread": -0.615, "carry": 0.1385, "rate": -0.4969, "rate_near": -0.0406, "rate_far": -0.4563, "convexity": 0.0081, "total": -0.9654}, {"spread": 0.164, "carry": 0.1385, "rate": -0.4145, "rate_near": -0.0185, "rate_far": -0.3961, "convexity": 0.0004, "total": -0.1116}, {"spread": -0.738, "carry": 0.1385, "rate": -0.1529, "rate_near": 0.0135, "rate_far": -0.1665, "convexity": 0.0052, "total": -0.7473}, {"spread": 1.025, "carry": 0.1385, "rate": 0.3501, "rate_near": -0.0, "rate_far": 0.3501, "convexity": 0.0124, "total": 1.526}, {"spread": 0.943, "carry": 0.1385, "rate": 0.0431, "rate_near": 0.0172, "rate_far": 0.0258, "convexity": 0.0064, "total": 1.1309}, {"spread": 0.451, "carry": 0.1385, "rate": 0.2813, "rate_near": -0.0086, "rate_far": 0.2899, "convexity": 0.0035, "total": 0.8742}, {"spread": -0.123, "carry": 0.1385, "rate": -0.2267, "rate_near": 0.0086, "rate_far": -0.2353, "convexity": 0.0008, "total": -0.2105}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2677, "rate_near": 0.0221, "rate_far": -0.2899, "convexity": 0.0001, "total": 0.2398}, {"spread": -0.164, "carry": 0.1385, "rate": -0.0016, "rate_near": -0.0246, "rate_far": 0.023, "convexity": 0.0002, "total": -0.027}, {"spread": 0.041, "carry": 0.1385, "rate": -0.6945, "rate_near": 0.0086, "rate_far": -0.7031, "convexity": 0.0028, "total": -0.5123}, {"spread": 0.246, "carry": 0.1385, "rate": 0.0094, "rate_near": 0.0037, "rate_far": 0.0057, "convexity": 0.0004, "total": 0.3943}, {"spread": 0.082, "carry": 0.1385, "rate": 0.3034, "rate_near": -0.0037, "rate_far": 0.3071, "convexity": 0.001, "total": 0.5248}, {"spread": -0.164, "carry": 0.1385, "rate": -0.4215, "rate_near": -0.0455, "rate_far": -0.376, "convexity": 0.0022, "total": -0.4448}], "risk": {"lqd": {"dts": 621.6, "dv01": 8400.0, "dv01_5": 7258.0, "dv01_30": 1142.0, "svar_10d": 0.754, "scvar_10d": 1.277, "mdd": -4.47}, "hyg": {"dts": 1131.6, "dv01": 4100.0, "dv01_2": 1230.0, "dv01_5": 2870.0, "svar_10d": 1.548, "scvar_10d": 2.798, "mdd": -5.11}, "corr": 0.846, "port_var_60_40": 1.031, "divers_benefit": 0.041, "var_curve_x": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100], "var_curve_y": [1.549, 1.503, 1.458, 1.413, 1.369, 1.324, 1.281, 1.237, 1.195, 1.153, 1.112, 1.071, 1.031, 0.991, 0.953, 0.916, 0.881, 0.847, 0.815, 0.783, 0.754], "var_naive_y": [1.548, 1.508, 1.469, 1.429, 1.389, 1.35, 1.31, 1.27, 1.231, 1.191, 1.151, 1.112, 1.072, 1.032, 0.992, 0.953, 0.913, 0.873, 0.834, 0.794, 0.754], "rolling_lqd_dts": [697.2, 697.2, 688.8, 672.0, 688.8, 705.6, 672.0, 680.4, 739.2, 747.6, 789.6, 772.8, 789.6, 957.6, 991.2, 932.4, 873.6, 890.4, 856.8, 781.2, 781.2, 764.4, 730.8, 739.2, 739.2, 739.2, 672.0, 697.2, 672.0, 655.2, 688.8, 672.0, 630.0, 646.8, 672.0, 663.6, 646.8, 621.6, 630.0, 630.0, 680.4, 672.0, 646.8, 672.0, 705.6, 697.2, 722.4, 688.8, 663.6, 672.0, 672.0, 663.6, 663.6, 655.2, 630.0, 613.2, 621.6, 638.4, 663.6, 655.2, 714.0, 705.6, 781.2, 739.2, 764.4, 722.4, 688.8, 672.0, 672.0, 680.4, 663.6, 630.0, 621.6, 613.2, 621.6], "rolling_hyg_dts": [1152.1, 1152.1, 1082.4, 1066.0, 1098.8, 1094.7, 1074.2, 1139.8, 1176.7, 1217.7, 1332.5, 1316.1, 1422.7, 1824.5, 1746.6, 1648.2, 1504.7, 1476.0, 1447.3, 1295.6, 1394.0, 1357.1, 1266.9, 1303.8, 1283.3, 1238.2, 1148.0, 1217.7, 1201.3, 1164.4, 1283.3, 1205.4, 1180.8, 1180.8, 1156.2, 1160.3, 1143.9, 1115.2, 1127.5, 1148.0, 1303.8, 1246.4, 1180.8, 1205.4, 1291.5, 1258.7, 1307.9, 1209.5, 1168.5, 1193.1, 1189.0, 1172.6, 1160.3, 1123.4, 1086.5, 1098.8, 1148.0, 1176.7, 1209.5, 1172.6, 1271.0, 1283.3, 1344.8, 1328.4, 1402.2, 1299.7, 1205.4, 1160.3, 1172.6, 1135.7, 1152.1, 1148.0, 1123.4, 1115.2, 1131.6], "lqd_dd": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.575, -0.82, -0.004, 0.0, 0.0, -3.975, -1.699, -0.53, -1.015, -1.029, -0.817, -0.975, 0.0, -0.674, 0.0, 0.0, 0.0, -0.061, -0.71, -0.201, 0.0, 0.0, -0.222, 0.0, 0.0, 0.0, 0.0, 0.0, -0.222, -0.795, -0.196, -0.067, 0.0, 0.0, -1.083, -1.093, -1.365, -0.647, -0.033, -0.665, -0.991, -0.447, -0.291, -0.553, -0.456, -0.65, -0.463, -0.195, 0.0, 0.0, -0.152, 0.0, -1.423, -3.362, -3.89, -4.469, -3.023, -2.57, -1.565, -2.092, -2.853, -2.523, -4.025, -3.771, -2.771, -3.688], "hyg_dd": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.307, 0.0, -0.461, -1.415, -0.903, -1.743, -4.682, -5.107, -3.423, -1.711, -1.447, -1.191, 0.0, -0.87, -0.085, 0.0, 0.0, 0.0, 0.0, 0.0, -0.702, -0.307, 0.0, -0.451, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.188, -0.075, -1.297, -0.412, 0.0, -0.38, -1.038, -0.77, -0.729, 0.0, 0.0, -0.114, 0.0, 0.0, 0.0, 0.0, 0.0, -0.047, -0.266, -0.316, -0.091, 0.0, -0.426, -0.978, -1.934, -2.044, -2.776, -1.292, -0.176, 0.0, -0.21, 0.0, -0.027, -0.539, -0.147, 0.0, -0.445], "rc_lqd_60": 0.452, "rc_hyg_60": 0.548, "notional": "10M"}, "source": "FRED OAS + mixed yields", "series_sources": {"LQD OAS (BAMLC0A0CM)": "FRED", "HYG OAS (BAMLH0A0HYM2)": "FRED", "2y yield": "yfinance ^IRX", "5y yield": "yfinance ^FVX", "30y yield": "yfinance ^TYX"}, "data_start": "2025-01-10", "data_end": "2026-06-05", "generated": "2026-06-08 13:41", "n_periods": 74};
+const DATA = __DATA_JSON__;
 let wLQD=0.60, wHYG=0.40, currentTab='cum';
 
 function sum(arr,k){return arr.reduce((a,b)=>a+b[k],0);}
@@ -646,4 +824,301 @@ redraw();
 buildInfoPanel();
 </script>
 </body>
-</html>
+</html>"""
+
+# ── Main ───────────────────────────────────────────────────────────────────────
+def main():
+    print("="*60)
+    print("Fixed Income Attribution Dashboard — v4 (KRD)")
+    print("="*60)
+    print(f"\n[1/3] Fetching market data ({START_DATE} → {END_DATE})...")
+
+    ig_oas = fetch_fred_csv("BAMLC0A0CM")
+    hy_oas = fetch_fred_csv("BAMLH0A0HYM2")
+    r2     = fetch_fred_csv("DGS2")
+    r5     = fetch_fred_csv("DGS5")
+    r30    = fetch_fred_csv("DGS30")
+
+    # Convert OAS % → bp
+    if ig_oas is not None: ig_oas = ig_oas * 100
+    if hy_oas is not None: hy_oas = hy_oas * 100
+
+    have_oas   = ig_oas is not None and hy_oas is not None
+    have_rates = r2 is not None and r5 is not None and r30 is not None
+
+    if have_oas and have_rates:
+        df = pd.DataFrame({"ig":ig_oas,"hy":hy_oas,"r2":r2,"r5":r5,"r30":r30})
+        df = df.loc[START_DATE:END_DATE].dropna()
+        market = {"lqd_oas":df["ig"],"hyg_oas":df["hy"],
+                  "r2":df["r2"],"r5":df["r5"],"r30":df["r30"],
+                  "source":"FRED (OAS + DGS2/5/30)"}
+        series_sources = {
+            "LQD OAS (BAMLC0A0CM)": "FRED", "HYG OAS (BAMLH0A0HYM2)": "FRED",
+            "2y yield (DGS2)": "FRED", "5y yield (DGS5)": "FRED", "30y yield (DGS30)": "FRED",
+        }
+        badge_class, data_label = "badge-live", "live · FRED"
+        data_source = "FRED — ICE BofA OAS + DGS2/DGS5/DGS30"
+
+    elif have_oas and not have_rates:
+        # Try yfinance for yields
+        print("\n  FRED yields incomplete — trying yfinance...")
+        yf_yields = fetch_yfinance_yields()
+        if yf_yields is not None:
+            # Use FRED where available, yfinance where not
+            r2_use  = r2  if r2  is not None else yf_yields.get("r2")
+            r5_use  = r5  if r5  is not None else yf_yields.get("r5")
+            r30_use = r30 if r30 is not None else yf_yields.get("r30")
+            # Last resort: approximate missing nodes from neighbours
+            if r2_use  is None and r5_use  is not None: r2_use  = r5_use
+            if r30_use is None and r5_use  is not None: r30_use = r5_use
+            if r5_use  is None and r2_use  is not None: r5_use  = r2_use
+            if any(x is None for x in [r2_use, r5_use, r30_use]):
+                raise ValueError("Insufficient yield data even with yfinance")
+            df = pd.DataFrame({"ig":ig_oas,"hy":hy_oas,
+                                "r2":r2_use,"r5":r5_use,"r30":r30_use}).dropna()
+            market = {"lqd_oas":df["ig"],"hyg_oas":df["hy"],
+                      "r2":df["r2"],"r5":df["r5"],"r30":df["r30"],
+                      "source":"FRED OAS + mixed yields"}
+            series_sources = {
+                "LQD OAS (BAMLC0A0CM)": "FRED",
+                "HYG OAS (BAMLH0A0HYM2)": "FRED",
+                "2y yield": "FRED DGS2" if r2 is not None else "yfinance ^IRX",
+                "5y yield": "FRED DGS5" if r5 is not None else "yfinance ^FVX",
+                "30y yield": "FRED DGS30" if r30 is not None else "yfinance ^TYX",
+            }
+            badge_class, data_label = "badge-yf", "live · FRED+yf"
+            data_source = "FRED (OAS) + yfinance/FRED (yields)"
+        else:
+            market = simulate_calibrated()
+            series_sources = {"All series": "Calibrated simulation"}
+            badge_class, data_label = "badge-sim", "calibrated simulation"
+            data_source = "Calibrated simulation"
+
+    else:
+        market = simulate_calibrated()
+        series_sources = {"All series": "Calibrated simulation (anchored to real levels)"}
+        badge_class, data_label = "badge-sim", "calibrated simulation"
+        data_source = "Calibrated simulation (anchored to real levels)"
+
+    print("\n[2/3] Computing weekly attribution...")
+    def bw(s): return build_weekly(s)
+
+    lqd_oas_w = bw(market["lqd_oas"])
+    hyg_oas_w = bw(market["hyg_oas"])
+    r2_w  = bw(market["r2"])
+    r5_w  = bw(market["r5"])
+    r30_w = bw(market["r30"])
+
+    common_w = (lqd_oas_w.index.intersection(hyg_oas_w.index)
+                .intersection(r2_w.index).intersection(r5_w.index).intersection(r30_w.index))
+
+    lqd_oas_w = lqd_oas_w.loc[common_w]
+    hyg_oas_w = hyg_oas_w.loc[common_w]
+    rates_w = {"r2": r2_w.loc[common_w], "r5": r5_w.loc[common_w], "r30": r30_w.loc[common_w]}
+
+    # Diagnostic
+    print(f"  LQD OAS: {lqd_oas_w.min():.0f}–{lqd_oas_w.max():.0f} bp")
+    print(f"  HYG OAS: {hyg_oas_w.min():.0f}–{hyg_oas_w.max():.0f} bp")
+    print(f"  2y: {rates_w['r2'].min():.2f}–{rates_w['r2'].max():.2f}%")
+    print(f"  5y: {rates_w['r5'].min():.2f}–{rates_w['r5'].max():.2f}%")
+    print(f"  30y:{rates_w['r30'].min():.2f}–{rates_w['r30'].max():.2f}%")
+
+    lqd_attr = compute_attribution(lqd_oas_w, rates_w, **ETF_PARAMS["LQD"])
+    hyg_attr = compute_attribution(hyg_oas_w, rates_w, **ETF_PARAMS["HYG"])
+
+    common_a = lqd_attr.index.intersection(hyg_attr.index)
+    lqd_attr = lqd_attr.loc[common_a]
+    hyg_attr = hyg_attr.loc[common_a]
+
+    print(f"  {len(lqd_attr)} weekly periods")
+    print(f"  LQD: total={lqd_attr['total'].sum():.2f}%  "
+          f"rate_near={lqd_attr['rate_near'].sum():.2f}%  rate_far={lqd_attr['rate_far'].sum():.2f}%")
+    print(f"  HYG: total={hyg_attr['total'].sum():.2f}%  "
+          f"rate_near={hyg_attr['rate_near'].sum():.2f}%  rate_far={hyg_attr['rate_far'].sum():.2f}%")
+
+    # ── Risk metrics ────────────────────────────────────────────────────────────
+    # Using last observation for point-in-time metrics
+    lqd_oas_now = float(lqd_oas_w.iloc[-1])
+    hyg_oas_now = float(hyg_oas_w.iloc[-1])
+    lqd_dur     = ETF_PARAMS["LQD"]["duration"]
+    hyg_dur     = ETF_PARAMS["HYG"]["duration"]
+
+    # DTS = Duration × OAS (bp)
+    lqd_dts = lqd_dur * lqd_oas_now
+    hyg_dts = hyg_dur * hyg_oas_now
+
+    # DV01 per $10M notional = Duration × 0.0001 × $10M
+    NOTIONAL = 10_000_000
+    lqd_dv01 = lqd_dur * 0.0001 * NOTIONAL
+    hyg_dv01 = hyg_dur * 0.0001 * NOTIONAL
+
+    # KRD DV01 per $10M — split by node
+    lqd_dv01_5  = ETF_PARAMS["LQD"]["krd_near"] * 0.0001 * NOTIONAL
+    lqd_dv01_30 = ETF_PARAMS["LQD"]["krd_far"]  * 0.0001 * NOTIONAL
+    hyg_dv01_2  = ETF_PARAMS["HYG"]["krd_near"] * 0.0001 * NOTIONAL
+    hyg_dv01_5  = ETF_PARAMS["HYG"]["krd_far"]  * 0.0001 * NOTIONAL
+
+    # Spread P&L series for VaR
+    doas_lqd = lqd_oas_w.diff().dropna()
+    doas_hyg = hyg_oas_w.diff().dropna()
+
+    def spread_pnl_series(doas_bp, duration):
+        return (-duration * doas_bp / 10000 * 100).values  # % return array
+
+    lqd_pnl = spread_pnl_series(doas_lqd, lqd_dur)
+    hyg_pnl = spread_pnl_series(doas_hyg, hyg_dur)
+
+    # Align lengths
+    min_len = min(len(lqd_pnl), len(hyg_pnl))
+    lqd_pnl = lqd_pnl[-min_len:]
+    hyg_pnl = hyg_pnl[-min_len:]
+
+    # Correlation between LQD and HYG spread P&L
+    corr_lqd_hyg = float(np.corrcoef(lqd_pnl, hyg_pnl)[0, 1])
+
+    def compute_var(pnl_array, conf=0.95, holding_days=10):
+        pct = np.percentile(pnl_array, (1-conf)*100)
+        scale = np.sqrt(holding_days / 5)
+        var  = -pct  * scale
+        cvar = -pnl_array[pnl_array <= pct].mean() * scale
+        return round(float(var), 3), round(float(cvar), 3)
+
+    lqd_svar, lqd_scvar = compute_var(lqd_pnl)
+    hyg_svar, hyg_scvar = compute_var(hyg_pnl)
+
+    def portfolio_var(w_lqd, w_hyg, s1, s2, rho, holding_days=10):
+        """σ_p = √(w1²σ1² + w2²σ2² + 2·w1·w2·σ1·σ2·ρ), scaled to 10-day."""
+        var_p = np.sqrt(w_lqd**2 * s1**2 + w_hyg**2 * s2**2 +
+                        2 * w_lqd * w_hyg * s1 * s2 * rho)
+        return round(float(var_p), 3)
+
+    # 1-day VaR σ (not scaled) for correlation formula
+    lqd_var1d = float(-np.percentile(lqd_pnl, 5))
+    hyg_var1d = float(-np.percentile(hyg_pnl, 5))
+
+    # VaR vs weight curve (0% to 100% LQD in 5% steps)
+    var_curve_x   = list(range(0, 101, 5))
+    var_curve_y   = [portfolio_var(w/100, 1-w/100, lqd_var1d, hyg_var1d, corr_lqd_hyg)
+                     * np.sqrt(10/5) for w in var_curve_x]
+    var_naive_y   = [(w/100 * lqd_var1d + (1-w/100) * hyg_var1d) * np.sqrt(10/5)
+                     for w in var_curve_x]  # no diversification
+
+    port_var_60_40 = portfolio_var(0.60, 0.40, lqd_var1d, hyg_var1d, corr_lqd_hyg) * np.sqrt(10/5)
+    divers_benefit = round(float((0.60*lqd_svar + 0.40*hyg_svar) - port_var_60_40), 3)
+
+    # Rolling DTS (weekly)
+    rolling_lqd_dts = (lqd_oas_w * lqd_dur).tolist()
+    rolling_hyg_dts = (hyg_oas_w * hyg_dur).tolist()
+
+    # IG vs HY risk contribution ratio (DTS-weighted)
+    def risk_contrib(w_lqd, w_hyg, dts_lqd, dts_hyg):
+        total = w_lqd * dts_lqd + w_hyg * dts_hyg
+        if total == 0: return 0.5, 0.5
+        return round(w_lqd * dts_lqd / total, 3), round(w_hyg * dts_hyg / total, 3)
+
+    rc_lqd_60, rc_hyg_60 = risk_contrib(0.60, 0.40, lqd_dts, hyg_dts)
+
+    # Max drawdown on weekly total return
+    def max_drawdown(ret_series):
+        cum = (1 + ret_series/100).cumprod()
+        roll_max = cum.cummax()
+        dd = (cum - roll_max) / roll_max * 100
+        return round(float(dd.min()), 2), dd.tolist()
+
+    lqd_mdd, lqd_dd_series = max_drawdown(lqd_attr["total"])
+    hyg_mdd, hyg_dd_series = max_drawdown(hyg_attr["total"])
+
+    risk_metrics = {
+        "lqd": {
+            "dts":      round(lqd_dts, 1),
+            "dv01":     round(lqd_dv01, 0),
+            "dv01_5":   round(lqd_dv01_5, 0),
+            "dv01_30":  round(lqd_dv01_30, 0),
+            "svar_10d": lqd_svar,
+            "scvar_10d":lqd_scvar,
+            "mdd":      lqd_mdd,
+        },
+        "hyg": {
+            "dts":      round(hyg_dts, 1),
+            "dv01":     round(hyg_dv01, 0),
+            "dv01_2":   round(hyg_dv01_2, 0),
+            "dv01_5":   round(hyg_dv01_5, 0),
+            "svar_10d": hyg_svar,
+            "scvar_10d":hyg_scvar,
+            "mdd":      hyg_mdd,
+        },
+        "corr":            round(corr_lqd_hyg, 3),
+        "port_var_60_40":  round(port_var_60_40, 3),
+        "divers_benefit":  divers_benefit,
+        "var_curve_x":     var_curve_x,
+        "var_curve_y":     [round(v, 3) for v in var_curve_y],
+        "var_naive_y":     [round(v, 3) for v in var_naive_y],
+        "rolling_lqd_dts": [round(x,1) for x in rolling_lqd_dts],
+        "rolling_hyg_dts": [round(x,1) for x in rolling_hyg_dts],
+        "lqd_dd":  [round(x,3) for x in lqd_dd_series],
+        "hyg_dd":  [round(x,3) for x in hyg_dd_series],
+        "rc_lqd_60": rc_lqd_60,
+        "rc_hyg_60": rc_hyg_60,
+        "notional": "10M",
+    }
+
+    print(f"  LQD DTS={lqd_dts:.0f}  DV01=${lqd_dv01:,.0f}  SpreadVaR(10d)={lqd_svar:.2f}%  MDD={lqd_mdd:.2f}%")
+    print(f"  HYG DTS={hyg_dts:.0f}  DV01=${hyg_dv01:,.0f}  SpreadVaR(10d)={hyg_svar:.2f}%  MDD={hyg_mdd:.2f}%")
+    print(f"  Correlation LQD-HYG spread: {corr_lqd_hyg:.3f}")
+    print(f"  Portfolio VaR (60/40, 10d): {port_var_60_40:.2f}%  Diversification benefit: {divers_benefit:.2f}%")
+
+    print("\n[3/3] Building HTML...")
+    chart_labels = [d.strftime("%b %d") for d in lqd_attr.index]
+    oas_dates    = [d.strftime("%Y-%m-%d") for d in lqd_oas_w.loc[common_a].index]
+
+    def to_list(df):
+        return [{"spread":   round(float(r.spread),    4),
+                 "carry":    round(float(r.carry),     4),
+                 "rate":     round(float(r.rate),      4),
+                 "rate_near":round(float(r.rate_near), 4),
+                 "rate_far": round(float(r.rate_far),  4),
+                 "convexity":round(float(r.convexity), 4),
+                 "total":    round(float(r.total),     4)}
+                for _, r in df.iterrows()]
+
+    data_json = json.dumps({
+        "labels":        chart_labels,
+        "oas_dates":     oas_dates,
+        "lqd_oas":       [round(float(x),2) for x in lqd_oas_w.loc[common_a]],
+        "hyg_oas":       [round(float(x),2) for x in hyg_oas_w.loc[common_a]],
+        "r2":            [round(float(x),3) for x in rates_w["r2"].loc[common_a]],
+        "r5":            [round(float(x),3) for x in rates_w["r5"].loc[common_a]],
+        "r30":           [round(float(x),3) for x in rates_w["r30"].loc[common_a]],
+        "lqd":           to_list(lqd_attr),
+        "hyg":           to_list(hyg_attr),
+        "risk":          risk_metrics,
+        "source":        market["source"],
+        "series_sources": series_sources,
+        "data_start":    oas_dates[0] if oas_dates else START_DATE,
+        "data_end":      oas_dates[-1] if oas_dates else END_DATE,
+        "generated":     datetime.today().strftime("%Y-%m-%d %H:%M"),
+        "n_periods":     len(lqd_attr),
+    })
+
+    html = HTML
+    html = html.replace("__BADGE_CLASS__",  badge_class)
+    html = html.replace("__DATA_LABEL__",   data_label)
+    html = html.replace("__START_DATE__",   START_DATE)
+    html = html.replace("__END_DATE__",     END_DATE)
+    html = html.replace("__DATA_SOURCE__",  data_source)
+    html = html.replace("__GENERATED__",    datetime.today().strftime("%Y-%m-%d"))
+    html = html.replace("__DATA_JSON__",    data_json)
+    html = html.replace("__LQD_KRD_5__",   f"{LQD_KRD_5:.2f}")
+    html = html.replace("__LQD_KRD_30__",  f"{LQD_KRD_30:.2f}")
+    html = html.replace("__HYG_KRD_2__",   f"{HYG_KRD_2:.2f}")
+    html = html.replace("__HYG_KRD_5__",   f"{HYG_KRD_5:.2f}")
+
+    os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_FILE)), exist_ok=True)
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        f.write(html)
+
+    print(f"\n✓  Saved → {OUTPUT_FILE}")
+    print("   Open in any browser — no server needed.\n")
+
+if __name__ == "__main__":
+    main()
