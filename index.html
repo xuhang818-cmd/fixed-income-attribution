@@ -1,0 +1,731 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Fixed Income Portfolio Attribution — Campisi Framework</title>
+<script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+<style>
+:root{
+  --bg:#0f1117;--bg2:#181c25;--bg3:#1e2330;--bdr:rgba(255,255,255,.08);
+  --t:#e8eaf0;--t2:#8b90a0;--t3:#5a5f70;
+  --ig:#185FA5;--hy:#993C1D;
+  --rate:#534AB7;--rate2:#8B80E0;--spread:#1D9E75;--carry:#BA7517;--convex:#9E3D9E;
+  --pos:#1D9E75;--neg:#C94040;--r:10px;
+  --plot-bg:transparent;--plot-paper:transparent;--plot-grid:rgba(255,255,255,.05);
+  --plot-tick:#8b90a0;--plot-line:rgba(255,255,255,.08);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+[data-theme="light"]{
+  --bg:#f5f6fa;--bg2:#ffffff;--bg3:#eef0f5;--bdr:rgba(0,0,0,.08);
+  --t:#1a1d24;--t2:#5a6070;--t3:#9aa0b0;
+  --plot-grid:rgba(0,0,0,.06);--plot-tick:#5a6070;--plot-line:rgba(0,0,0,.1)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--t);padding:2rem;min-height:100vh;transition:background .25s,color .25s}
+.topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:1.5rem}
+.topbar-left h1{font-size:18px;font-weight:500;margin-bottom:4px}
+.sub{font-size:13px;color:var(--t2)}
+.theme-btn{font-size:12px;padding:5px 12px;border-radius:var(--r);cursor:pointer;
+  border:.5px solid var(--bdr);background:var(--bg2);color:var(--t);white-space:nowrap;
+  transition:background .25s,color .25s}
+.badge{font-size:11px;padding:2px 8px;border-radius:20px;margin-left:8px;vertical-align:middle}
+.badge-live{background:rgba(29,158,117,.15);color:var(--pos)}
+.badge-yf{background:rgba(83,74,183,.15);color:#534AB7}
+.badge-sim{background:rgba(186,117,23,.15);color:#BA7517}
+.formula{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);
+  padding:10px 16px;font-size:12px;color:var(--t2);margin-bottom:1.25rem;line-height:2.2}
+.formula code{font-family:"SF Mono","Fira Code",monospace;color:var(--t);font-size:12px}
+.krd-note{font-size:11px;color:var(--t3);margin-top:6px}
+.weight-row{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.25rem}
+.wc{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem}
+.wc-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.wc-name{font-size:14px;font-weight:500}
+.wc-tag{font-size:11px;padding:2px 8px;border-radius:20px}
+.wc-pct{font-size:22px;font-weight:500;margin:6px 0 8px}
+.slider{width:100%;margin-bottom:10px}
+.wc-meta{font-size:12px;color:var(--t2);margin-bottom:10px}
+.ab{margin:5px 0}
+.ab-row{display:flex;justify-content:space-between;font-size:12px;color:var(--t2);margin-bottom:3px}
+.ab-track{height:4px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.ab-fill{height:100%;border-radius:3px;transition:width .35s}
+.ab-sub{margin-left:10px}
+.ab-sub .ab-track{height:3px;opacity:.6}
+.metric-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:1.25rem}
+.mc{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:12px 14px}
+.mc-lbl{font-size:11px;color:var(--t2);margin-bottom:5px}
+.mc-val{font-size:18px;font-weight:500}
+.mc-sub{font-size:11px;margin-top:3px}
+.pos{color:var(--pos)}.neg{color:var(--neg)}
+.panel{background:var(--bg2);border:.5px solid var(--bdr);border-radius:var(--r);padding:1rem 1.25rem;margin-bottom:1rem}
+.plbl{font-size:11px;font-weight:500;color:var(--t2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.tab{font-size:12px;padding:4px 12px;border-radius:var(--r);cursor:pointer;
+  border:.5px solid var(--bdr);background:transparent;color:var(--t2)}
+.tab.active{background:var(--bg3);color:var(--t);border-color:var(--t3)}
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:10px;font-size:12px;color:var(--t2)}
+.ld{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:4px;vertical-align:middle}
+#chartDiv{width:100%;height:280px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{font-size:11px;font-weight:500;color:var(--t2);text-align:left;padding:5px 8px;border-bottom:.5px solid var(--bdr)}
+td{padding:6px 8px;border-bottom:.5px solid var(--bdr)}
+tr:last-child td{border-bottom:none;font-weight:500}
+.sub-row td{color:var(--t2);font-size:11px;padding:3px 8px 5px}
+.sub-row td:first-child{padding-left:20px}
+.mono{font-family:"SF Mono","Fira Code",monospace;font-size:11px;color:var(--t2)}
+.note{font-size:11px;color:var(--t3);margin-top:.75rem}
+.risk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:1rem}
+.rc{background:var(--bg3);border:.5px solid var(--bdr);border-radius:var(--r);padding:11px 13px}
+.rc-lbl{font-size:11px;color:var(--t2);margin-bottom:5px}
+.rc-val{font-size:17px;font-weight:500;color:var(--t)}
+.rc-sub{font-size:11px;color:var(--t2);margin-top:2px}
+.risk-bar{height:8px;background:var(--bg2);border-radius:4px;margin-top:8px;overflow:hidden}
+.risk-bar-fill{height:100%;border-radius:4px}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="topbar-left">
+    <h1>Fixed income portfolio attribution <span class="badge badge-live">live · FRED + Treasury</span></h1>
+    <p class="sub">LQD (IG) &nbsp;·&nbsp; HYG (HY) &nbsp;·&nbsp; 2025-01-01 – 2026-06-14 &nbsp;·&nbsp; Campisi + KRD</p>
+  </div>
+  <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀ Light</button>
+</div>
+
+<div class="formula">
+  R = <code>Rate</code> + <code>Spread</code> + <code>Carry</code> + <code>Convexity</code><br>
+  <code>Rate = −KRD<sub>near</sub> × Δr<sub>near</sub> − KRD<sub>far</sub> × Δr<sub>far</sub></code>
+  &nbsp;·&nbsp; <code>Spread = −Duration × ΔOAS</code>
+  &nbsp;·&nbsp; <code>Carry = coupon ÷ 52</code>
+  &nbsp;·&nbsp; <code>Convexity = ½ · C · (Δr̄ + ΔOAS)²</code><br>
+  <span class="krd-note">
+    LQD nodes: KRD<sub>5y</sub> = 7.26 &nbsp;·&nbsp; KRD<sub>30y</sub> = 1.14
+    &nbsp;&nbsp;|&nbsp;&nbsp;
+    HYG nodes: KRD<sub>2y</sub> = 1.23 &nbsp;·&nbsp; KRD<sub>5y</sub> = 2.87
+  </span>
+</div>
+
+<div class="weight-row">
+  <div class="wc">
+    <div class="wc-header">
+      <span class="wc-name" style="color:var(--ig)">LQD</span>
+      <span class="wc-tag" style="background:rgba(24,95,165,.12);color:var(--ig)">Investment grade · DGS5 + DGS30</span>
+    </div>
+    <div class="wc-pct" style="color:var(--ig)" id="lqdPct">60%</div>
+    <input class="slider" type="range" min="0" max="100" value="60" id="lqdSlider" oninput="onSlider('lqd',this.value)">
+    <div class="wc-meta">Dur: 8.4y · Coupon: ~4.8% · Convexity: 82</div>
+    <div id="lqd-a-spread"    class="ab"></div>
+    <div id="lqd-a-carry"     class="ab"></div>
+    <div id="lqd-a-rate"      class="ab"></div>
+    <div id="lqd-a-rate-near" class="ab ab-sub"></div>
+    <div id="lqd-a-rate-far"  class="ab ab-sub"></div>
+    <div id="lqd-a-convex"    class="ab"></div>
+  </div>
+  <div class="wc">
+    <div class="wc-header">
+      <span class="wc-name" style="color:var(--hy)">HYG</span>
+      <span class="wc-tag" style="background:rgba(153,60,29,.12);color:var(--hy)">High yield · DGS2 + DGS5</span>
+    </div>
+    <div class="wc-pct" style="color:var(--hy)" id="hygPct">40%</div>
+    <input class="slider" type="range" min="0" max="100" value="40" id="hygSlider" oninput="onSlider('hyg',this.value)">
+    <div class="wc-meta">Dur: 4.1y · Coupon: ~7.2% · Convexity: 22</div>
+    <div id="hyg-a-spread"    class="ab"></div>
+    <div id="hyg-a-carry"     class="ab"></div>
+    <div id="hyg-a-rate"      class="ab"></div>
+    <div id="hyg-a-rate-near" class="ab ab-sub"></div>
+    <div id="hyg-a-rate-far"  class="ab ab-sub"></div>
+    <div id="hyg-a-convex"    class="ab"></div>
+  </div>
+</div>
+
+<div class="metric-row" id="metrics"></div>
+
+<div class="panel" id="attrPanel">
+  <p class="plbl">Portfolio return decomposition</p>
+  <div class="tabs">
+    <button class="tab active" onclick="switchTab('cum',this)">Cumulative attribution</button>
+    <button class="tab" onclick="switchTab('weekly',this)">Weekly stacked</button>
+    <button class="tab" onclick="switchTab('oas',this)">OAS levels</button>
+    <button class="tab" onclick="switchTab('curve',this)">Yield curve</button>
+  </div>
+  <div class="legend" id="legCum">
+    <span><span class="ld" style="background:#d0d4e0"></span>Total (bold)</span>
+    <span><span class="ld" style="background:var(--rate)"></span>Rate total</span>
+    <span><span class="ld" style="background:var(--spread)"></span>Spread</span>
+    <span><span class="ld" style="background:var(--carry)"></span>Carry</span>
+    <span><span class="ld" style="background:var(--convex)"></span>Convexity</span>
+    <span><span class="ld" style="background:var(--rate2);opacity:.8"></span>Rate near ···</span>
+    <span><span class="ld" style="background:#9080FF;opacity:.8"></span>Rate far -·-</span>
+  </div>
+  <div class="legend" id="legOas" style="display:none">
+    <span><span class="ld" style="background:var(--ig)"></span>LQD OAS (bp)</span>
+    <span><span class="ld" style="background:var(--hy)"></span>HYG OAS (bp)</span>
+  </div>
+  <div class="legend" id="legCurve" style="display:none">
+    <span><span class="ld" style="background:#4A9EFF"></span>2y yield</span>
+    <span><span class="ld" style="background:var(--rate)"></span>5y yield</span>
+    <span><span class="ld" style="background:#46b8a4"></span>10y yield</span>
+    <span><span class="ld" style="background:#E05050"></span>30y yield</span>
+  </div>
+  <div id="chartDiv"></div>
+</div>
+
+<div class="panel">
+  <p class="plbl">Attribution summary</p>
+  <table>
+    <thead><tr>
+      <th>Component</th><th>Formula</th>
+      <th>LQD (weighted)</th><th>HYG (weighted)</th><th>Portfolio</th>
+    </tr></thead>
+    <tbody id="summaryTbody"></tbody>
+  </table>
+  <p class="note">Source: FRED — ICE BofA OAS + US Treasury par yields (2/5/10/30) &nbsp;·&nbsp; Generated 2026-06-14</p>
+</div>
+
+<div class="panel" id="pcaPanel">
+  <p class="plbl">Rate decomposition via yield-curve PCA — Level / Slope / Curvature</p>
+  <p style="font-size:11px;color:var(--t3);margin:-4px 0 12px;line-height:1.6">
+    Splits the <b>rate</b> component into three orthogonal curve factors estimated from DGS2/5/10/30 weekly changes.
+    This measures the <i>shape</i> of the curve move — distinct from the bond-level
+    <span style="color:var(--convex)">Convexity</span> term above. HYG's short duration means its curvature exposure is near zero.
+  </p>
+  <div class="risk-grid" id="pcaCards"></div>
+  <div class="tabs" style="margin-top:1rem">
+    <button class="tab active" onclick="switchPca('rate',this)">Rate split (L/S/C)</button>
+    <button class="tab" onclick="switchPca('shapes',this)">Factor shapes</button>
+  </div>
+  <div class="legend" id="legPcaRate">
+    <span><span class="ld" style="background:#e3a857"></span>Level</span>
+    <span><span class="ld" style="background:#46b8a4"></span>Slope</span>
+    <span><span class="ld" style="background:#a87fd6"></span>Curvature</span>
+    <span><span class="ld" style="background:#d0d4e0"></span>Rate total (dashed)</span>
+  </div>
+  <div class="legend" id="legPcaShapes" style="display:none">
+    <span><span class="ld" style="background:#e3a857"></span>Level (PC1)</span>
+    <span><span class="ld" style="background:#46b8a4"></span>Slope (PC2)</span>
+    <span><span class="ld" style="background:#a87fd6"></span>Curvature (PC3)</span>
+  </div>
+  <div id="pcaChart" style="width:100%;height:260px"></div>
+</div>
+
+<div class="panel" id="riskPanel">
+  <p class="plbl">Risk metrics</p>
+  <div class="tabs">
+    <button class="tab active" onclick="switchRisk('snapshot',this)">Point-in-time</button>
+    <button class="tab" onclick="switchRisk('portvar',this)">Portfolio VaR</button>
+    <button class="tab" onclick="switchRisk('dts',this)">Rolling DTS</button>
+    <button class="tab" onclick="switchRisk('dd',this)">Drawdown</button>
+  </div>
+  <div id="riskSnapshot">
+    <div class="risk-grid" id="riskCards"></div>
+    <table style="margin-top:1rem" id="riskTable">
+      <thead><tr>
+        <th>Metric</th><th>Formula</th><th>LQD</th><th>HYG</th><th>Portfolio (60/40)</th>
+      </tr></thead>
+      <tbody id="riskTbody"></tbody>
+    </table>
+  </div>
+  <div id="riskChart" style="display:none;width:100%;height:220px"></div>
+</div>
+
+<div class="panel" style="margin-top:.5rem">
+  <p class="plbl">Data provenance</p>
+  <div id="infoPanel"></div>
+</div>
+
+<script>
+const DATA = {"labels": ["Jan 10", "Jan 17", "Jan 24", "Jan 31", "Feb 07", "Feb 14", "Feb 21", "Feb 28", "Mar 07", "Mar 14", "Mar 21", "Mar 28", "Apr 04", "Apr 11", "Apr 18", "Apr 25", "May 02", "May 09", "May 16", "May 23", "May 30", "Jun 06", "Jun 13", "Jun 20", "Jun 27", "Jul 04", "Jul 11", "Jul 18", "Jul 25", "Aug 01", "Aug 08", "Aug 15", "Aug 22", "Aug 29", "Sep 05", "Sep 12", "Sep 19", "Sep 26", "Oct 03", "Oct 10", "Oct 17", "Oct 24", "Oct 31", "Nov 07", "Nov 14", "Nov 21", "Nov 28", "Dec 05", "Dec 12", "Dec 19", "Dec 26", "Jan 02", "Jan 09", "Jan 16", "Jan 23", "Jan 30", "Feb 06", "Feb 13", "Feb 20", "Feb 27", "Mar 06", "Mar 13", "Mar 20", "Mar 27", "Apr 03", "Apr 10", "Apr 17", "Apr 24", "May 01", "May 08", "May 15", "May 22", "May 29", "Jun 05", "Jun 12"], "oas_dates": ["2025-01-10", "2025-01-17", "2025-01-24", "2025-01-31", "2025-02-07", "2025-02-14", "2025-02-21", "2025-02-28", "2025-03-07", "2025-03-14", "2025-03-21", "2025-03-28", "2025-04-04", "2025-04-11", "2025-04-18", "2025-04-25", "2025-05-02", "2025-05-09", "2025-05-16", "2025-05-23", "2025-05-30", "2025-06-06", "2025-06-13", "2025-06-20", "2025-06-27", "2025-07-04", "2025-07-11", "2025-07-18", "2025-07-25", "2025-08-01", "2025-08-08", "2025-08-15", "2025-08-22", "2025-08-29", "2025-09-05", "2025-09-12", "2025-09-19", "2025-09-26", "2025-10-03", "2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31", "2025-11-07", "2025-11-14", "2025-11-21", "2025-11-28", "2025-12-05", "2025-12-12", "2025-12-19", "2025-12-26", "2026-01-02", "2026-01-09", "2026-01-16", "2026-01-23", "2026-01-30", "2026-02-06", "2026-02-13", "2026-02-20", "2026-02-27", "2026-03-06", "2026-03-13", "2026-03-20", "2026-03-27", "2026-04-03", "2026-04-10", "2026-04-17", "2026-04-24", "2026-05-01", "2026-05-08", "2026-05-15", "2026-05-22", "2026-05-29", "2026-06-05", "2026-06-12"], "lqd_oas": [83.0, 82.0, 80.0, 82.0, 84.0, 80.0, 81.0, 88.0, 89.0, 94.0, 92.0, 94.0, 114.0, 118.0, 111.0, 104.0, 106.0, 102.0, 93.0, 93.0, 91.0, 87.0, 88.0, 88.0, 88.0, 80.0, 83.0, 80.0, 78.0, 82.0, 80.0, 75.0, 77.0, 80.0, 79.0, 77.0, 74.0, 75.0, 75.0, 81.0, 80.0, 77.0, 80.0, 84.0, 83.0, 86.0, 82.0, 79.0, 80.0, 80.0, 79.0, 79.0, 78.0, 75.0, 73.0, 74.0, 76.0, 79.0, 78.0, 85.0, 84.0, 93.0, 88.0, 91.0, 86.0, 82.0, 80.0, 80.0, 81.0, 79.0, 75.0, 74.0, 73.0, 74.0, 75.0], "hyg_oas": [281.0, 264.0, 260.0, 268.0, 267.0, 262.0, 278.0, 287.0, 297.0, 325.0, 321.0, 347.0, 445.0, 426.0, 402.0, 367.0, 360.0, 353.0, 316.0, 340.0, 331.0, 309.0, 318.0, 313.0, 302.0, 280.0, 297.0, 293.0, 284.0, 313.0, 294.0, 288.0, 288.0, 282.0, 283.0, 279.0, 272.0, 275.0, 280.0, 318.0, 304.0, 288.0, 294.0, 315.0, 307.0, 319.0, 295.0, 285.0, 291.0, 290.0, 286.0, 283.0, 274.0, 265.0, 268.0, 280.0, 287.0, 295.0, 286.0, 310.0, 313.0, 328.0, 324.0, 342.0, 313.0, 294.0, 283.0, 286.0, 277.0, 281.0, 280.0, 274.0, 272.0, 276.0, 278.0], "r2": [4.4, 4.27, 4.27, 4.22, 4.29, 4.26, 4.19, 3.99, 3.99, 4.02, 3.94, 3.89, 3.68, 3.96, 3.81, 3.74, 3.83, 3.88, 3.98, 4.0, 3.89, 4.04, 3.96, 3.9, 3.73, 3.88, 3.9, 3.88, 3.91, 3.69, 3.76, 3.75, 3.68, 3.59, 3.51, 3.56, 3.57, 3.63, 3.58, 3.52, 3.46, 3.48, 3.6, 3.55, 3.62, 3.51, 3.47, 3.56, 3.52, 3.48, 3.46, 3.47, 3.54, 3.59, 3.6, 3.52, 3.5, 3.4, 3.48, 3.38, 3.56, 3.73, 3.88, 3.88, 3.84, 3.81, 3.71, 3.78, 3.88, 3.9, 4.09, 4.13, 3.98, 4.17, 4.05], "r5": [4.59, 4.42, 4.43, 4.36, 4.34, 4.33, 4.26, 4.03, 4.09, 4.09, 4.0, 3.98, 3.72, 4.15, 3.95, 3.88, 3.92, 4.0, 4.06, 4.08, 3.96, 4.13, 4.02, 3.96, 3.83, 3.94, 3.99, 3.96, 3.95, 3.77, 3.84, 3.85, 3.76, 3.68, 3.59, 3.63, 3.68, 3.76, 3.72, 3.65, 3.59, 3.61, 3.71, 3.67, 3.74, 3.62, 3.59, 3.72, 3.75, 3.7, 3.68, 3.74, 3.75, 3.82, 3.84, 3.79, 3.76, 3.61, 3.65, 3.51, 3.72, 3.87, 4.01, 4.06, 3.99, 3.94, 3.84, 3.92, 4.02, 4.02, 4.26, 4.27, 4.13, 4.29, 4.18], "r10": [4.77, 4.61, 4.63, 4.58, 4.49, 4.47, 4.42, 4.24, 4.32, 4.31, 4.25, 4.27, 4.01, 4.48, 4.34, 4.29, 4.33, 4.37, 4.43, 4.51, 4.41, 4.51, 4.41, 4.38, 4.29, 4.35, 4.43, 4.44, 4.4, 4.23, 4.27, 4.33, 4.26, 4.23, 4.1, 4.06, 4.14, 4.2, 4.13, 4.05, 4.02, 4.02, 4.11, 4.11, 4.14, 4.06, 4.02, 4.14, 4.19, 4.16, 4.14, 4.19, 4.18, 4.24, 4.24, 4.26, 4.22, 4.04, 4.08, 3.97, 4.15, 4.28, 4.39, 4.44, 4.35, 4.31, 4.26, 4.31, 4.39, 4.38, 4.59, 4.56, 4.45, 4.55, 4.45], "r30": [4.96, 4.84, 4.85, 4.83, 4.69, 4.69, 4.67, 4.51, 4.62, 4.62, 4.59, 4.64, 4.41, 4.85, 4.8, 4.74, 4.79, 4.83, 4.89, 5.04, 4.92, 4.97, 4.9, 4.89, 4.85, 4.86, 4.96, 5.0, 4.92, 4.81, 4.85, 4.92, 4.88, 4.92, 4.78, 4.68, 4.75, 4.77, 4.71, 4.63, 4.6, 4.59, 4.67, 4.7, 4.74, 4.71, 4.67, 4.79, 4.85, 4.82, 4.81, 4.86, 4.82, 4.83, 4.82, 4.87, 4.85, 4.69, 4.72, 4.64, 4.77, 4.9, 4.96, 4.98, 4.91, 4.91, 4.88, 4.91, 4.97, 4.95, 5.12, 5.07, 4.99, 5.01, 4.95], "lqd": [{"spread": -0.0, "carry": 0.0923, "rate": -1.4663, "rate_near": -1.3064, "rate_far": -0.1599, "rate_level": -1.413, "rate_slope": 0.0232, "rate_curv": -0.0715, "rate_resid": -0.005, "convexity": 0.0125, "total": -1.3615}, {"spread": 0.084, "carry": 0.0923, "rate": 1.3709, "rate_near": 1.2338, "rate_far": 0.1371, "rate_level": 1.3456, "rate_slope": -0.0032, "rate_curv": 0.0482, "rate_resid": -0.0196, "convexity": 0.0123, "total": 1.5595}, {"spread": 0.168, "carry": 0.0923, "rate": -0.084, "rate_near": -0.0726, "rate_far": -0.0114, "rate_level": -0.0936, "rate_slope": 0.0098, "rate_curv": -0.0263, "rate_resid": 0.0261, "convexity": 0.0, "total": 0.1763}, {"spread": -0.168, "carry": 0.0923, "rate": 0.5309, "rate_near": 0.508, "rate_far": 0.0228, "rate_level": 0.4505, "rate_slope": 0.0205, "rate_curv": 0.0646, "rate_resid": -0.0047, "convexity": 0.0008, "total": 0.456}, {"spread": -0.168, "carry": 0.0923, "rate": 0.3051, "rate_near": 0.1452, "rate_far": 0.1599, "rate_level": 0.3899, "rate_slope": -0.1568, "rate_curv": 0.0595, "rate_resid": 0.0126, "convexity": 0.0001, "total": 0.2295}, {"spread": 0.336, "carry": 0.0923, "rate": 0.0726, "rate_near": 0.0726, "rate_far": -0.0, "rate_level": 0.1394, "rate_slope": 0.0155, "rate_curv": -0.0286, "rate_resid": -0.0538, "convexity": 0.001, "total": 0.5019}, {"spread": -0.084, "carry": 0.0923, "rate": 0.5309, "rate_near": 0.508, "rate_far": 0.0228, "rate_level": 0.4942, "rate_slope": 0.0329, "rate_curv": 0.0163, "rate_resid": -0.0125, "convexity": 0.0012, "total": 0.5403}, {"spread": -0.588, "carry": 0.0923, "rate": 1.852, "rate_near": 1.6692, "rate_far": 0.1828, "rate_level": 1.7812, "rate_slope": 0.0221, "rate_curv": -0.0239, "rate_resid": 0.0727, "convexity": 0.0093, "total": 1.3656}, {"spread": -0.084, "carry": 0.0923, "rate": -0.5611, "rate_near": -0.4355, "rate_far": -0.1257, "rate_level": -0.564, "rate_slope": 0.0812, "rate_curv": -0.0319, "rate_resid": -0.0464, "convexity": 0.0024, "total": -0.5504}, {"spread": -0.42, "carry": 0.0923, "rate": -0.0, "rate_near": -0.0, "rate_far": -0.0, "rate_level": -0.0416, "rate_slope": -0.0213, "rate_curv": 0.082, "rate_resid": -0.0191, "convexity": 0.001, "total": -0.3267}, {"spread": 0.168, "carry": 0.0923, "rate": 0.6875, "rate_near": 0.6532, "rate_far": 0.0343, "rate_level": 0.6117, "rate_slope": 0.0344, "rate_curv": 0.0335, "rate_resid": 0.0079, "convexity": 0.0043, "total": 0.952}, {"spread": -0.168, "carry": 0.0923, "rate": 0.088, "rate_near": 0.1452, "rate_far": -0.0571, "rate_level": 0.0151, "rate_slope": 0.0746, "rate_curv": -0.0031, "rate_resid": 0.0014, "convexity": 0.0, "total": 0.0124}, {"spread": -1.68, "carry": 0.0923, "rate": 2.1497, "rate_near": 1.887, "rate_far": 0.2628, "rate_level": 2.2103, "rate_slope": -0.0333, "rate_curv": -0.0199, "rate_resid": -0.0073, "convexity": 0.0013, "total": 0.5633}, {"spread": -0.336, "carry": 0.0923, "rate": -3.6234, "rate_near": -3.1208, "rate_far": -0.5027, "rate_level": -3.7214, "rate_slope": 0.1475, "rate_curv": -0.0635, "rate_resid": 0.0139, "convexity": 0.0911, "total": -3.776}, {"spread": 0.588, "carry": 0.0923, "rate": 1.5086, "rate_near": 1.4515, "rate_far": 0.0571, "rate_level": 1.2819, "rate_slope": 0.0686, "rate_curv": 0.177, "rate_resid": -0.0188, "convexity": 0.0255, "total": 2.2145}, {"spread": 0.588, "carry": 0.0923, "rate": 0.5766, "rate_near": 0.508, "rate_far": 0.0685, "rate_level": 0.5728, "rate_slope": 0.0061, "rate_curv": -0.0537, "rate_resid": 0.0513, "convexity": 0.0079, "total": 1.2648}, {"spread": -0.168, "carry": 0.0923, "rate": -0.3474, "rate_near": -0.2903, "rate_far": -0.0571, "rate_level": -0.4947, "rate_slope": -0.0208, "rate_curv": 0.1678, "rate_resid": 0.0003, "convexity": 0.0015, "total": -0.4216}, {"spread": 0.336, "carry": 0.0923, "rate": -0.6263, "rate_near": -0.5806, "rate_far": -0.0457, "rate_level": -0.4919, "rate_slope": -0.0122, "rate_curv": -0.0446, "rate_resid": -0.0776, "convexity": 0.0005, "total": -0.1975}, {"spread": 0.756, "carry": 0.0923, "rate": -0.504, "rate_near": -0.4355, "rate_far": -0.0685, "rate_level": -0.6362, "rate_slope": -0.0196, "rate_curv": 0.141, "rate_resid": 0.0107, "convexity": 0.0004, "total": 0.3447}, {"spread": -0.0, "carry": 0.0923, "rate": -0.3165, "rate_near": -0.1452, "rate_far": -0.1714, "rate_level": -0.5821, "rate_slope": 0.1051, "rate_curv": 0.1847, "rate_resid": -0.0243, "convexity": 0.0006, "total": -0.2236}, {"spread": 0.168, "carry": 0.0923, "rate": 1.008, "rate_near": 0.8709, "rate_far": 0.1371, "rate_level": 1.028, "rate_slope": -0.0111, "rate_curv": -0.0842, "rate_resid": 0.0753, "convexity": 0.008, "total": 1.2763}, {"spread": 0.336, "carry": 0.0923, "rate": -1.2909, "rate_near": -1.2338, "rate_far": -0.0571, "rate_level": -1.108, "rate_slope": -0.0724, "rate_curv": -0.0648, "rate_resid": -0.0457, "convexity": 0.0053, "total": -0.8573}, {"spread": -0.084, "carry": 0.0923, "rate": 0.8783, "rate_near": 0.7983, "rate_far": 0.08, "rate_level": 0.8382, "rate_slope": 0.0014, "rate_curv": 0.0511, "rate_resid": -0.0124, "convexity": 0.0037, "total": 0.8903}, {"spread": -0.0, "carry": 0.0923, "rate": 0.4469, "rate_near": 0.4355, "rate_far": 0.0114, "rate_level": 0.3788, "rate_slope": 0.0365, "rate_curv": 0.0141, "rate_resid": 0.0175, "convexity": 0.0012, "total": 0.5403}, {"spread": -0.0, "carry": 0.0923, "rate": 0.9892, "rate_near": 0.9435, "rate_far": 0.0457, "rate_level": 1.0039, "rate_slope": 0.0847, "rate_curv": -0.0739, "rate_resid": -0.0255, "convexity": 0.0057, "total": 1.0872}, {"spread": 0.672, "carry": 0.0923, "rate": -0.8098, "rate_near": -0.7983, "rate_far": -0.0114, "rate_level": -0.7774, "rate_slope": -0.0958, "rate_curv": 0.0512, "rate_resid": 0.0122, "convexity": 0.0001, "total": -0.0453}, {"spread": -0.252, "carry": 0.0923, "rate": -0.4771, "rate_near": -0.3629, "rate_far": -0.1142, "rate_level": -0.562, "rate_slope": 0.0645, "rate_curv": 0.0234, "rate_resid": -0.0031, "convexity": 0.0031, "total": -0.6337}, {"spread": 0.252, "carry": 0.0923, "rate": 0.172, "rate_near": 0.2177, "rate_far": -0.0457, "rate_level": 0.0193, "rate_slope": 0.049, "rate_curv": 0.0859, "rate_resid": 0.0178, "convexity": 0.001, "total": 0.5174}, {"spread": 0.168, "carry": 0.0923, "rate": 0.164, "rate_near": 0.0726, "rate_far": 0.0914, "rate_level": 0.2135, "rate_slope": -0.0806, "rate_curv": -0.0046, "rate_resid": 0.0357, "convexity": 0.0006, "total": 0.4249}, {"spread": -0.336, "carry": 0.0923, "rate": 1.432, "rate_near": 1.3064, "rate_far": 0.1257, "rate_level": 1.5724, "rate_slope": 0.0588, "rate_curv": -0.1172, "rate_resid": -0.0819, "convexity": 0.007, "total": 1.1953}, {"spread": 0.168, "carry": 0.0923, "rate": -0.5537, "rate_near": -0.508, "rate_far": -0.0457, "rate_level": -0.5095, "rate_slope": -0.0222, "rate_curv": 0.0283, "rate_resid": -0.0502, "convexity": 0.0009, "total": -0.2926}, {"spread": 0.42, "carry": 0.0923, "rate": -0.1525, "rate_near": -0.0726, "rate_far": -0.08, "rate_level": -0.2854, "rate_slope": 0.067, "rate_curv": 0.0162, "rate_resid": 0.0497, "convexity": 0.0004, "total": 0.3602}, {"spread": -0.168, "carry": 0.0923, "rate": 0.6989, "rate_near": 0.6532, "rate_far": 0.0457, "rate_level": 0.6335, "rate_slope": 0.0188, "rate_curv": 0.0497, "rate_resid": -0.0031, "convexity": 0.0016, "total": 0.6248}, {"spread": -0.252, "carry": 0.0923, "rate": 0.5349, "rate_near": 0.5806, "rate_far": -0.0457, "rate_level": 0.3981, "rate_slope": 0.0932, "rate_curv": 0.0785, "rate_resid": -0.0349, "convexity": 0.0005, "total": 0.3757}, {"spread": 0.084, "carry": 0.0923, "rate": 0.8131, "rate_near": 0.6532, "rate_far": 0.1599, "rate_level": 0.9955, "rate_slope": -0.0583, "rate_curv": -0.0918, "rate_resid": -0.0322, "convexity": 0.0047, "total": 0.9941}, {"spread": 0.168, "carry": 0.0923, "rate": -0.1761, "rate_near": -0.2903, "rate_far": 0.1142, "rate_level": 0.0789, "rate_slope": -0.1183, "rate_curv": -0.1143, "rate_resid": -0.0224, "convexity": 0.0, "total": 0.0842}, {"spread": 0.252, "carry": 0.0923, "rate": -0.4428, "rate_near": -0.3629, "rate_far": -0.08, "rate_level": -0.4812, "rate_slope": 0.0506, "rate_curv": -0.0532, "rate_resid": 0.0409, "convexity": 0.0002, "total": -0.0983}, {"spread": -0.084, "carry": 0.0923, "rate": -0.6035, "rate_near": -0.5806, "rate_far": -0.0228, "rate_level": -0.5224, "rate_slope": -0.0263, "rate_curv": -0.0746, "rate_resid": 0.0199, "convexity": 0.0027, "total": -0.5924}, {"spread": -0.0, "carry": 0.0923, "rate": 0.3588, "rate_near": 0.2903, "rate_far": 0.0685, "rate_level": 0.4989, "rate_slope": -0.0189, "rate_curv": -0.06, "rate_resid": -0.0612, "convexity": 0.0007, "total": 0.4519}, {"spread": -0.504, "carry": 0.0923, "rate": 0.5994, "rate_near": 0.508, "rate_far": 0.0914, "rate_level": 0.6621, "rate_slope": -0.0217, "rate_curv": -0.0357, "rate_resid": -0.0053, "convexity": 0.0001, "total": 0.1878}, {"spread": 0.084, "carry": 0.0923, "rate": 0.4697, "rate_near": 0.4355, "rate_far": 0.0343, "rate_level": 0.4181, "rate_slope": 0.0231, "rate_curv": -0.0209, "rate_resid": 0.0494, "convexity": 0.0018, "total": 0.6478}, {"spread": 0.252, "carry": 0.0923, "rate": -0.1337, "rate_near": -0.1452, "rate_far": 0.0114, "rate_level": -0.0761, "rate_slope": -0.0238, "rate_curv": -0.0184, "rate_resid": -0.0154, "convexity": 0.0001, "total": 0.2107}, {"spread": -0.252, "carry": 0.0923, "rate": -0.8172, "rate_near": -0.7258, "rate_far": -0.0914, "rate_level": -0.8952, "rate_slope": -0.0199, "rate_curv": 0.0971, "rate_resid": 0.0008, "convexity": 0.0066, "total": -0.9702}, {"spread": -0.336, "carry": 0.0923, "rate": 0.256, "rate_near": 0.2903, "rate_far": -0.0343, "rate_level": 0.1544, "rate_slope": 0.0605, "rate_curv": 0.0303, "rate_resid": 0.0109, "convexity": 0.0, "total": 0.0124}, {"spread": 0.084, "carry": 0.0923, "rate": -0.5537, "rate_near": -0.508, "rate_far": -0.0457, "rate_level": -0.4856, "rate_slope": -0.025, "rate_curv": 0.0379, "rate_resid": -0.081, "convexity": 0.0013, "total": -0.3761}, {"spread": -0.252, "carry": 0.0923, "rate": 0.9052, "rate_near": 0.8709, "rate_far": 0.0343, "rate_level": 0.8033, "rate_slope": 0.0546, "rate_curv": 0.0541, "rate_resid": -0.0068, "convexity": 0.0025, "total": 0.748}, {"spread": 0.336, "carry": 0.0923, "rate": 0.2634, "rate_near": 0.2177, "rate_far": 0.0457, "rate_level": 0.3399, "rate_slope": -0.0058, "rate_curv": -0.0543, "rate_resid": -0.0163, "convexity": 0.0021, "total": 0.6938}, {"spread": 0.252, "carry": 0.0923, "rate": -1.0806, "rate_near": -0.9435, "rate_far": -0.1371, "rate_level": -1.0583, "rate_slope": 0.0265, "rate_curv": -0.0079, "rate_resid": -0.041, "convexity": 0.004, "total": -0.7323}, {"spread": -0.084, "carry": 0.0923, "rate": -0.2863, "rate_near": -0.2177, "rate_far": -0.0685, "rate_level": -0.2284, "rate_slope": 0.0714, "rate_curv": -0.1133, "rate_resid": -0.016, "convexity": 0.0008, "total": -0.2772}, {"spread": -0.0, "carry": 0.0923, "rate": 0.3972, "rate_near": 0.3629, "rate_far": 0.0343, "rate_level": 0.3484, "rate_slope": 0.0084, "rate_curv": 0.0028, "rate_resid": 0.0377, "convexity": 0.0009, "total": 0.4904}, {"spread": 0.084, "carry": 0.0923, "rate": 0.1566, "rate_near": 0.1452, "rate_far": 0.0114, "rate_level": 0.1633, "rate_slope": 0.005, "rate_curv": 0.0026, "rate_resid": -0.0143, "convexity": 0.0003, "total": 0.3332}, {"spread": -0.0, "carry": 0.0923, "rate": -0.4926, "rate_near": -0.4355, "rate_far": -0.0571, "rate_level": -0.3961, "rate_slope": 0.0267, "rate_curv": -0.084, "rate_resid": -0.0392, "convexity": 0.0014, "total": -0.3989}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0269, "rate_near": -0.0726, "rate_far": 0.0457, "rate_level": -0.0763, "rate_slope": -0.0752, "rate_curv": 0.0839, "rate_resid": 0.0408, "convexity": 0.0, "total": 0.1494}, {"spread": 0.252, "carry": 0.0923, "rate": -0.5195, "rate_near": -0.508, "rate_far": -0.0114, "rate_level": -0.4548, "rate_slope": -0.0245, "rate_curv": -0.0917, "rate_resid": 0.0515, "convexity": 0.0004, "total": -0.1747}, {"spread": 0.168, "carry": 0.0923, "rate": -0.1337, "rate_near": -0.1452, "rate_far": 0.0114, "rate_level": -0.0543, "rate_slope": -0.0176, "rate_curv": -0.0426, "rate_resid": -0.0193, "convexity": 0.0, "total": 0.1266}, {"spread": -0.084, "carry": 0.0923, "rate": 0.3058, "rate_near": 0.3629, "rate_far": -0.0571, "rate_level": 0.1588, "rate_slope": 0.1003, "rate_curv": -0.0017, "rate_resid": 0.0484, "convexity": 0.0003, "total": 0.3144}, {"spread": -0.168, "carry": 0.0923, "rate": 0.2406, "rate_near": 0.2177, "rate_far": 0.0228, "rate_level": 0.2569, "rate_slope": -0.0048, "rate_curv": 0.0289, "rate_resid": -0.0404, "convexity": 0.0, "total": 0.1649}, {"spread": -0.252, "carry": 0.0923, "rate": 1.2714, "rate_near": 1.0886, "rate_far": 0.1828, "rate_level": 1.3545, "rate_slope": -0.0588, "rate_curv": 0.0205, "rate_resid": -0.0448, "convexity": 0.006, "total": 1.1178}, {"spread": 0.084, "carry": 0.0923, "rate": -0.3246, "rate_near": -0.2903, "rate_far": -0.0343, "rate_level": -0.4336, "rate_slope": -0.028, "rate_curv": 0.1087, "rate_resid": 0.0283, "convexity": 0.0003, "total": -0.1479}, {"spread": -0.588, "carry": 0.0923, "rate": 1.1075, "rate_near": 1.0161, "rate_far": 0.0914, "rate_level": 1.0036, "rate_slope": 0.0115, "rate_curv": 0.0687, "rate_resid": 0.0236, "convexity": 0.0016, "total": 0.6133}, {"spread": 0.084, "carry": 0.0923, "rate": -1.6726, "rate_near": -1.5241, "rate_far": -0.1485, "rate_level": -1.6265, "rate_slope": -0.025, "rate_curv": -0.0276, "rate_resid": 0.0065, "convexity": 0.0147, "total": -1.4816}, {"spread": -0.756, "carry": 0.0923, "rate": -1.2372, "rate_near": -1.0886, "rate_far": -0.1485, "rate_level": -1.3286, "rate_slope": -0.0183, "rate_curv": 0.1438, "rate_resid": -0.0341, "convexity": 0.0231, "total": -1.8778}, {"spread": 0.42, "carry": 0.0923, "rate": -1.0846, "rate_near": -1.0161, "rate_far": -0.0685, "rate_level": -1.0735, "rate_slope": -0.0558, "rate_curv": 0.0169, "rate_resid": 0.0278, "convexity": 0.0026, "total": -0.5697}, {"spread": -0.252, "carry": 0.0923, "rate": -0.3857, "rate_near": -0.3629, "rate_far": -0.0228, "rate_level": -0.2893, "rate_slope": 0.0152, "rate_curv": -0.136, "rate_resid": 0.0243, "convexity": 0.0024, "total": -0.5431}, {"spread": 0.42, "carry": 0.0923, "rate": 0.588, "rate_near": 0.508, "rate_far": 0.08, "rate_level": 0.6227, "rate_slope": -0.0301, "rate_curv": 0.0396, "rate_resid": -0.0443, "convexity": 0.0059, "total": 1.1062}, {"spread": 0.336, "carry": 0.0923, "rate": 0.3629, "rate_near": 0.3629, "rate_far": -0.0, "rate_level": 0.2915, "rate_slope": 0.0195, "rate_curv": 0.089, "rate_resid": -0.0371, "convexity": 0.0028, "total": 0.794}, {"spread": 0.168, "carry": 0.0923, "rate": 0.76, "rate_near": 0.7258, "rate_far": 0.0343, "rate_level": 0.6575, "rate_slope": 0.0519, "rate_curv": 0.0002, "rate_resid": 0.0504, "convexity": 0.005, "total": 1.0253}, {"spread": -0.0, "carry": 0.0923, "rate": -0.6149, "rate_near": -0.5806, "rate_far": -0.0343, "rate_level": -0.5399, "rate_slope": -0.0286, "rate_curv": -0.0234, "rate_resid": -0.023, "convexity": 0.0022, "total": -0.5204}, {"spread": -0.084, "carry": 0.0923, "rate": -0.7943, "rate_near": -0.7258, "rate_far": -0.0685, "rate_level": -0.7883, "rate_slope": -0.0236, "rate_curv": 0.0235, "rate_resid": -0.0059, "convexity": 0.0045, "total": -0.7815}, {"spread": 0.168, "carry": 0.0923, "rate": 0.0228, "rate_near": -0.0, "rate_far": 0.0228, "rate_level": 0.0196, "rate_slope": -0.0285, "rate_curv": 0.0229, "rate_resid": 0.0089, "convexity": 0.0002, "total": 0.2834}, {"spread": 0.336, "carry": 0.0923, "rate": -1.936, "rate_near": -1.7418, "rate_far": -0.1942, "rate_level": -1.8769, "rate_slope": -0.0034, "rate_curv": -0.0361, "rate_resid": -0.0197, "convexity": 0.0149, "total": -1.4928}, {"spread": 0.084, "carry": 0.0923, "rate": -0.0155, "rate_near": -0.0726, "rate_far": 0.0571, "rate_level": 0.0567, "rate_slope": -0.0688, "rate_curv": 0.0132, "rate_resid": -0.0166, "convexity": 0.0, "total": 0.1609}, {"spread": 0.084, "carry": 0.0923, "rate": 1.1075, "rate_near": 1.0161, "rate_far": 0.0914, "rate_level": 1.1128, "rate_slope": 0.0424, "rate_curv": -0.0519, "rate_resid": 0.0041, "convexity": 0.0082, "total": 1.292}, {"spread": -0.084, "carry": 0.0923, "rate": -1.1841, "rate_near": -1.1612, "rate_far": -0.0228, "rate_level": -1.1104, "rate_slope": -0.1148, "rate_curv": 0.0038, "rate_resid": 0.0373, "convexity": 0.0093, "total": -1.1664}, {"spread": -0.084, "carry": 0.0923, "rate": 0.8669, "rate_near": 0.7983, "rate_far": 0.0685, "rate_level": 0.9059, "rate_slope": 0.0329, "rate_curv": -0.0279, "rate_resid": -0.044, "convexity": 0.0036, "total": 0.8787}], "hyg": [{"spread": -0.0, "carry": 0.1385, "rate": -0.6642, "rate_near": -0.1476, "rate_far": -0.5166, "rate_level": -0.6789, "rate_slope": 0.0348, "rate_curv": -0.0185, "rate_resid": -0.0016, "convexity": 0.0029, "total": -0.5229}, {"spread": 0.697, "carry": 0.1385, "rate": 0.6478, "rate_near": 0.1599, "rate_far": 0.4879, "rate_level": 0.6465, "rate_slope": -0.0049, "rate_curv": 0.0124, "rate_resid": -0.0063, "convexity": 0.0118, "total": 1.4951}, {"spread": 0.164, "carry": 0.1385, "rate": -0.0287, "rate_near": -0.0, "rate_far": -0.0287, "rate_level": -0.045, "rate_slope": 0.0147, "rate_curv": -0.0068, "rate_resid": 0.0084, "convexity": 0.0001, "total": 0.2739}, {"spread": -0.328, "carry": 0.1385, "rate": 0.2624, "rate_near": 0.0615, "rate_far": 0.2009, "rate_level": 0.2165, "rate_slope": 0.0308, "rate_curv": 0.0167, "rate_resid": -0.0015, "convexity": 0.0, "total": 0.0729}, {"spread": 0.041, "carry": 0.1385, "rate": -0.0287, "rate_near": -0.0861, "rate_far": 0.0574, "rate_level": 0.1873, "rate_slope": -0.2354, "rate_curv": 0.0154, "rate_resid": 0.004, "convexity": 0.0, "total": 0.1508}, {"spread": 0.205, "carry": 0.1385, "rate": 0.0656, "rate_near": 0.0369, "rate_far": 0.0287, "rate_level": 0.067, "rate_slope": 0.0232, "rate_curv": -0.0074, "rate_resid": -0.0172, "convexity": 0.0005, "total": 0.4095}, {"spread": -0.656, "carry": 0.1385, "rate": 0.287, "rate_near": 0.0861, "rate_far": 0.2009, "rate_level": 0.2375, "rate_slope": 0.0493, "rate_curv": 0.0042, "rate_resid": -0.004, "convexity": 0.0009, "total": -0.2296}, {"spread": -0.369, "carry": 0.1385, "rate": 0.9061, "rate_near": 0.246, "rate_far": 0.6601, "rate_level": 0.8558, "rate_slope": 0.0332, "rate_curv": -0.0062, "rate_resid": 0.0233, "convexity": 0.0019, "total": 0.6774}, {"spread": -0.41, "carry": 0.1385, "rate": -0.1722, "rate_near": -0.0, "rate_far": -0.1722, "rate_level": -0.271, "rate_slope": 0.1219, "rate_curv": -0.0082, "rate_resid": -0.0149, "convexity": 0.0022, "total": -0.4415}, {"spread": -1.148, "carry": 0.1385, "rate": -0.0369, "rate_near": -0.0369, "rate_far": -0.0, "rate_level": -0.02, "rate_slope": -0.032, "rate_curv": 0.0212, "rate_resid": -0.0061, "convexity": 0.0092, "total": -1.0373}, {"spread": 0.164, "carry": 0.1385, "rate": 0.3567, "rate_near": 0.0984, "rate_far": 0.2583, "rate_level": 0.2939, "rate_slope": 0.0516, "rate_curv": 0.0086, "rate_resid": 0.0025, "convexity": 0.0018, "total": 0.6609}, {"spread": -1.066, "carry": 0.1385, "rate": 0.1189, "rate_near": 0.0615, "rate_far": 0.0574, "rate_level": 0.0073, "rate_slope": 0.112, "rate_curv": -0.0008, "rate_resid": 0.0005, "convexity": 0.0059, "total": -0.8028}, {"spread": -4.018, "carry": 0.1385, "rate": 1.0045, "rate_near": 0.2583, "rate_far": 0.7462, "rate_level": 1.062, "rate_slope": -0.05, "rate_curv": -0.0051, "rate_resid": -0.0023, "convexity": 0.0594, "total": -2.8156}, {"spread": 0.779, "carry": 0.1385, "rate": -1.5785, "rate_near": -0.3444, "rate_far": -1.2341, "rate_level": -1.788, "rate_slope": 0.2215, "rate_curv": -0.0164, "rate_resid": 0.0045, "convexity": 0.0042, "total": -0.6569}, {"spread": 0.984, "carry": 0.1385, "rate": 0.7585, "rate_near": 0.1845, "rate_far": 0.574, "rate_level": 0.6159, "rate_slope": 0.1029, "rate_curv": 0.0457, "rate_resid": -0.006, "convexity": 0.0199, "total": 1.9008}, {"spread": 1.435, "carry": 0.1385, "rate": 0.287, "rate_near": 0.0861, "rate_far": 0.2009, "rate_level": 0.2752, "rate_slope": 0.0092, "rate_curv": -0.0139, "rate_resid": 0.0165, "convexity": 0.0194, "total": 1.8799}, {"spread": 0.287, "carry": 0.1385, "rate": -0.2255, "rate_near": -0.1107, "rate_far": -0.1148, "rate_level": -0.2377, "rate_slope": -0.0312, "rate_curv": 0.0433, "rate_resid": 0.0001, "convexity": 0.0, "total": 0.2}, {"spread": 0.287, "carry": 0.1385, "rate": -0.2911, "rate_near": -0.0615, "rate_far": -0.2296, "rate_level": -0.2364, "rate_slope": -0.0184, "rate_curv": -0.0115, "rate_resid": -0.0249, "convexity": 0.0, "total": 0.1344}, {"spread": 1.517, "carry": 0.1385, "rate": -0.2952, "rate_near": -0.123, "rate_far": -0.1722, "rate_level": -0.3057, "rate_slope": -0.0294, "rate_curv": 0.0364, "rate_resid": 0.0034, "convexity": 0.0098, "total": 1.37}, {"spread": -0.984, "carry": 0.1385, "rate": -0.082, "rate_near": -0.0246, "rate_far": -0.0574, "rate_level": -0.2797, "rate_slope": 0.1578, "rate_curv": 0.0477, "rate_resid": -0.0078, "convexity": 0.0074, "total": -0.9201}, {"spread": 0.369, "carry": 0.1385, "rate": 0.4797, "rate_near": 0.1353, "rate_far": 0.3444, "rate_level": 0.4939, "rate_slope": -0.0166, "rate_curv": -0.0217, "rate_resid": 0.0241, "convexity": 0.0047, "total": 0.9919}, {"spread": 0.902, "carry": 0.1385, "rate": -0.6724, "rate_near": -0.1845, "rate_far": -0.4879, "rate_level": -0.5324, "rate_slope": -0.1086, "rate_curv": -0.0167, "rate_resid": -0.0147, "convexity": 0.0003, "total": 0.3684}, {"spread": -0.369, "carry": 0.1385, "rate": 0.4141, "rate_near": 0.0984, "rate_far": 0.3157, "rate_level": 0.4027, "rate_slope": 0.0022, "rate_curv": 0.0132, "rate_resid": -0.004, "convexity": 0.0, "total": 0.1836}, {"spread": 0.205, "carry": 0.1385, "rate": 0.246, "rate_near": 0.0738, "rate_far": 0.1722, "rate_level": 0.182, "rate_slope": 0.0548, "rate_curv": 0.0037, "rate_resid": 0.0056, "convexity": 0.0013, "total": 0.5908}, {"spread": 0.451, "carry": 0.1385, "rate": 0.5822, "rate_near": 0.2091, "rate_far": 0.3731, "rate_level": 0.4824, "rate_slope": 0.1271, "rate_curv": -0.0191, "rate_resid": -0.0082, "convexity": 0.007, "total": 1.1786}, {"spread": 0.902, "carry": 0.1385, "rate": -0.5002, "rate_near": -0.1845, "rate_far": -0.3157, "rate_level": -0.3735, "rate_slope": -0.1438, "rate_curv": 0.0132, "rate_resid": 0.0039, "convexity": 0.0011, "total": 0.5413}, {"spread": -0.697, "carry": 0.1385, "rate": -0.1681, "rate_near": -0.0246, "rate_far": -0.1435, "rate_level": -0.27, "rate_slope": 0.0969, "rate_curv": 0.0061, "rate_resid": -0.001, "convexity": 0.0049, "total": -0.7217}, {"spread": 0.164, "carry": 0.1385, "rate": 0.1107, "rate_near": 0.0246, "rate_far": 0.0861, "rate_level": 0.0093, "rate_slope": 0.0735, "rate_curv": 0.0222, "rate_resid": 0.0057, "convexity": 0.0005, "total": 0.4137}, {"spread": 0.369, "carry": 0.1385, "rate": -0.0082, "rate_near": -0.0369, "rate_far": 0.0287, "rate_level": 0.1026, "rate_slope": -0.121, "rate_curv": -0.0012, "rate_resid": 0.0114, "convexity": 0.0009, "total": 0.5001}, {"spread": -1.189, "carry": 0.1385, "rate": 0.7872, "rate_near": 0.2706, "rate_far": 0.5166, "rate_level": 0.7555, "rate_slope": 0.0882, "rate_curv": -0.0303, "rate_resid": -0.0263, "convexity": 0.0011, "total": -0.2623}, {"spread": 0.779, "carry": 0.1385, "rate": -0.287, "rate_near": -0.0861, "rate_far": -0.2009, "rate_level": -0.2448, "rate_slope": -0.0334, "rate_curv": 0.0073, "rate_resid": -0.0161, "convexity": 0.0016, "total": 0.632}, {"spread": 0.246, "carry": 0.1385, "rate": -0.0164, "rate_near": 0.0123, "rate_far": -0.0287, "rate_level": -0.1371, "rate_slope": 0.1007, "rate_curv": 0.0042, "rate_resid": 0.0159, "convexity": 0.0003, "total": 0.3684}, {"spread": -0.0, "carry": 0.1385, "rate": 0.3444, "rate_near": 0.0861, "rate_far": 0.2583, "rate_level": 0.3044, "rate_slope": 0.0282, "rate_curv": 0.0128, "rate_resid": -0.001, "convexity": 0.0008, "total": 0.4836}, {"spread": 0.246, "carry": 0.1385, "rate": 0.3403, "rate_near": 0.1107, "rate_far": 0.2296, "rate_level": 0.1913, "rate_slope": 0.1399, "rate_curv": 0.0203, "rate_resid": -0.0112, "convexity": 0.0022, "total": 0.727}, {"spread": -0.041, "carry": 0.1385, "rate": 0.3567, "rate_near": 0.0984, "rate_far": 0.2583, "rate_level": 0.4783, "rate_slope": -0.0876, "rate_curv": -0.0237, "rate_resid": -0.0103, "convexity": 0.0007, "total": 0.4548}, {"spread": 0.164, "carry": 0.1385, "rate": -0.1763, "rate_near": -0.0615, "rate_far": -0.1148, "rate_level": 0.0379, "rate_slope": -0.1775, "rate_curv": -0.0295, "rate_resid": -0.0072, "convexity": 0.0, "total": 0.1262}, {"spread": 0.287, "carry": 0.1385, "rate": -0.1558, "rate_near": -0.0123, "rate_far": -0.1435, "rate_level": -0.2312, "rate_slope": 0.076, "rate_curv": -0.0137, "rate_resid": 0.0131, "convexity": 0.0001, "total": 0.2698}, {"spread": -0.123, "carry": 0.1385, "rate": -0.3034, "rate_near": -0.0738, "rate_far": -0.2296, "rate_level": -0.251, "rate_slope": -0.0395, "rate_curv": -0.0193, "rate_resid": 0.0064, "convexity": 0.0012, "total": -0.2867}, {"spread": -0.205, "carry": 0.1385, "rate": 0.1763, "rate_near": 0.0615, "rate_far": 0.1148, "rate_level": 0.2397, "rate_slope": -0.0283, "rate_curv": -0.0155, "rate_resid": -0.0196, "convexity": 0.0, "total": 0.1098}, {"spread": -1.558, "carry": 0.1385, "rate": 0.2747, "rate_near": 0.0738, "rate_far": 0.2009, "rate_level": 0.3181, "rate_slope": -0.0325, "rate_curv": -0.0092, "rate_resid": -0.0017, "convexity": 0.0108, "total": -1.1341}, {"spread": 0.574, "carry": 0.1385, "rate": 0.246, "rate_near": 0.0738, "rate_far": 0.1722, "rate_level": 0.2009, "rate_slope": 0.0347, "rate_curv": -0.0054, "rate_resid": 0.0158, "convexity": 0.0044, "total": 0.9629}, {"spread": 0.656, "carry": 0.1385, "rate": -0.082, "rate_near": -0.0246, "rate_far": -0.0574, "rate_level": -0.0366, "rate_slope": -0.0357, "rate_curv": -0.0048, "rate_resid": -0.0049, "convexity": 0.0022, "total": 0.7146}, {"spread": -0.246, "carry": 0.1385, "rate": -0.4346, "rate_near": -0.1476, "rate_far": -0.287, "rate_level": -0.4301, "rate_slope": -0.0298, "rate_curv": 0.0251, "rate_resid": 0.0003, "convexity": 0.003, "total": -0.5391}, {"spread": -0.861, "carry": 0.1385, "rate": 0.1763, "rate_near": 0.0615, "rate_far": 0.1148, "rate_level": 0.0742, "rate_slope": 0.0908, "rate_curv": 0.0078, "rate_resid": 0.0035, "convexity": 0.0031, "total": -0.5432}, {"spread": 0.328, "carry": 0.1385, "rate": -0.287, "rate_near": -0.0861, "rate_far": -0.2009, "rate_level": -0.2333, "rate_slope": -0.0375, "rate_curv": 0.0098, "rate_resid": -0.026, "convexity": 0.0, "total": 0.1795}, {"spread": -0.492, "carry": 0.1385, "rate": 0.4797, "rate_near": 0.1353, "rate_far": 0.3444, "rate_level": 0.3859, "rate_slope": 0.082, "rate_curv": 0.014, "rate_resid": -0.0022, "convexity": 0.0, "total": 0.1262}, {"spread": 0.984, "carry": 0.1385, "rate": 0.1353, "rate_near": 0.0492, "rate_far": 0.0861, "rate_level": 0.1633, "rate_slope": -0.0088, "rate_curv": -0.014, "rate_resid": -0.0052, "convexity": 0.0082, "total": 1.266}, {"spread": 0.41, "carry": 0.1385, "rate": -0.4838, "rate_near": -0.1107, "rate_far": -0.3731, "rate_level": -0.5085, "rate_slope": 0.0398, "rate_curv": -0.002, "rate_resid": -0.0131, "convexity": 0.0, "total": 0.0647}, {"spread": -0.246, "carry": 0.1385, "rate": -0.0369, "rate_near": 0.0492, "rate_far": -0.0861, "rate_level": -0.1098, "rate_slope": 0.1072, "rate_curv": -0.0292, "rate_resid": -0.0051, "convexity": 0.0005, "total": -0.1439}, {"spread": 0.041, "carry": 0.1385, "rate": 0.1927, "rate_near": 0.0492, "rate_far": 0.1435, "rate_level": 0.1674, "rate_slope": 0.0125, "rate_curv": 0.0007, "rate_resid": 0.0121, "convexity": 0.0004, "total": 0.3725}, {"spread": 0.164, "carry": 0.1385, "rate": 0.082, "rate_near": 0.0246, "rate_far": 0.0574, "rate_level": 0.0785, "rate_slope": 0.0074, "rate_curv": 0.0007, "rate_resid": -0.0046, "convexity": 0.0004, "total": 0.3849}, {"spread": 0.123, "carry": 0.1385, "rate": -0.1845, "rate_near": -0.0123, "rate_far": -0.1722, "rate_level": -0.1903, "rate_slope": 0.04, "rate_curv": -0.0217, "rate_resid": -0.0126, "convexity": 0.0, "total": 0.077}, {"spread": 0.369, "carry": 0.1385, "rate": -0.1148, "rate_near": -0.0861, "rate_far": -0.0287, "rate_level": -0.0367, "rate_slope": -0.1128, "rate_curv": 0.0217, "rate_resid": 0.0131, "convexity": 0.0004, "total": 0.3931}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2624, "rate_near": -0.0615, "rate_far": -0.2009, "rate_level": -0.2185, "rate_slope": -0.0367, "rate_curv": -0.0237, "rate_resid": 0.0165, "convexity": 0.0001, "total": 0.2451}, {"spread": -0.123, "carry": 0.1385, "rate": -0.0697, "rate_near": -0.0123, "rate_far": -0.0574, "rate_level": -0.0261, "rate_slope": -0.0265, "rate_curv": -0.011, "rate_resid": -0.0062, "convexity": 0.0002, "total": -0.054}, {"spread": -0.492, "carry": 0.1385, "rate": 0.2419, "rate_near": 0.0984, "rate_far": 0.1435, "rate_level": 0.0763, "rate_slope": 0.1505, "rate_curv": -0.0004, "rate_resid": 0.0155, "convexity": 0.0004, "total": -0.1112}, {"spread": -0.287, "carry": 0.1385, "rate": 0.1107, "rate_near": 0.0246, "rate_far": 0.0861, "rate_level": 0.1234, "rate_slope": -0.0072, "rate_curv": 0.0075, "rate_resid": -0.013, "convexity": 0.0002, "total": -0.0376}, {"spread": -0.328, "carry": 0.1385, "rate": 0.5535, "rate_near": 0.123, "rate_far": 0.4305, "rate_level": 0.6508, "rate_slope": -0.0882, "rate_curv": 0.0053, "rate_resid": -0.0144, "convexity": 0.0003, "total": 0.3643}, {"spread": 0.369, "carry": 0.1385, "rate": -0.2132, "rate_near": -0.0984, "rate_far": -0.1148, "rate_level": -0.2083, "rate_slope": -0.042, "rate_curv": 0.0281, "rate_resid": 0.0091, "convexity": 0.0002, "total": 0.2944}, {"spread": -0.984, "carry": 0.1385, "rate": 0.5248, "rate_near": 0.123, "rate_far": 0.4018, "rate_level": 0.4822, "rate_slope": 0.0173, "rate_curv": 0.0177, "rate_resid": 0.0076, "convexity": 0.0014, "total": -0.3194}, {"spread": -0.123, "carry": 0.1385, "rate": -0.8241, "rate_near": -0.2214, "rate_far": -0.6027, "rate_level": -0.7815, "rate_slope": -0.0376, "rate_curv": -0.0071, "rate_resid": 0.0021, "convexity": 0.0059, "total": -0.8028}, {"spread": -0.615, "carry": 0.1385, "rate": -0.6396, "rate_near": -0.2091, "rate_far": -0.4305, "rate_level": -0.6384, "rate_slope": -0.0274, "rate_curv": 0.0371, "rate_resid": -0.0109, "convexity": 0.0103, "total": -1.1058}, {"spread": 0.164, "carry": 0.1385, "rate": -0.5863, "rate_near": -0.1845, "rate_far": -0.4018, "rate_level": -0.5158, "rate_slope": -0.0838, "rate_curv": 0.0044, "rate_resid": 0.0089, "convexity": 0.0012, "total": -0.2827}, {"spread": -0.738, "carry": 0.1385, "rate": -0.1435, "rate_near": -0.0, "rate_far": -0.1435, "rate_level": -0.139, "rate_slope": 0.0228, "rate_curv": -0.0351, "rate_resid": 0.0078, "convexity": 0.0051, "total": -0.738}, {"spread": 1.189, "carry": 0.1385, "rate": 0.2501, "rate_near": 0.0492, "rate_far": 0.2009, "rate_level": 0.2992, "rate_slope": -0.0451, "rate_curv": 0.0102, "rate_resid": -0.0142, "convexity": 0.0136, "total": 1.5911}, {"spread": 0.779, "carry": 0.1385, "rate": 0.1804, "rate_near": 0.0369, "rate_far": 0.1435, "rate_level": 0.1401, "rate_slope": 0.0293, "rate_curv": 0.023, "rate_resid": -0.0119, "convexity": 0.006, "total": 1.1039}, {"spread": 0.451, "carry": 0.1385, "rate": 0.41, "rate_near": 0.123, "rate_far": 0.287, "rate_level": 0.3159, "rate_slope": 0.0779, "rate_curv": 0.0001, "rate_resid": 0.0162, "convexity": 0.0049, "total": 1.0043}, {"spread": -0.123, "carry": 0.1385, "rate": -0.3157, "rate_near": -0.0861, "rate_far": -0.2296, "rate_level": -0.2594, "rate_slope": -0.0429, "rate_curv": -0.006, "rate_resid": -0.0074, "convexity": 0.0013, "total": -0.299}, {"spread": 0.369, "carry": 0.1385, "rate": -0.41, "rate_near": -0.123, "rate_far": -0.287, "rate_level": -0.3787, "rate_slope": -0.0354, "rate_curv": 0.0061, "rate_resid": -0.0019, "convexity": 0.0, "total": 0.0975}, {"spread": -0.164, "carry": 0.1385, "rate": -0.0246, "rate_near": -0.0246, "rate_far": -0.0, "rate_level": 0.0094, "rate_slope": -0.0428, "rate_curv": 0.0059, "rate_resid": 0.0029, "convexity": 0.0002, "total": -0.0499}, {"spread": 0.041, "carry": 0.1385, "rate": -0.9225, "rate_near": -0.2337, "rate_far": -0.6888, "rate_level": -0.9018, "rate_slope": -0.0051, "rate_curv": -0.0093, "rate_resid": -0.0063, "convexity": 0.0051, "total": -0.738}, {"spread": 0.246, "carry": 0.1385, "rate": -0.0779, "rate_near": -0.0492, "rate_far": -0.0287, "rate_level": 0.0272, "rate_slope": -0.1032, "rate_curv": 0.0034, "rate_resid": -0.0053, "convexity": 0.0002, "total": 0.3067}, {"spread": 0.082, "carry": 0.1385, "rate": 0.5863, "rate_near": 0.1845, "rate_far": 0.4018, "rate_level": 0.5347, "rate_slope": 0.0637, "rate_curv": -0.0134, "rate_resid": 0.0013, "convexity": 0.0029, "total": 0.8097}, {"spread": -0.164, "carry": 0.1385, "rate": -0.6929, "rate_near": -0.2337, "rate_far": -0.4592, "rate_level": -0.5335, "rate_slope": -0.1723, "rate_curv": 0.001, "rate_resid": 0.012, "convexity": 0.0048, "total": -0.7136}, {"spread": -0.082, "carry": 0.1385, "rate": 0.4633, "rate_near": 0.1476, "rate_far": 0.3157, "rate_level": 0.4353, "rate_slope": 0.0493, "rate_curv": -0.0072, "rate_resid": -0.0141, "convexity": 0.001, "total": 0.5207}], "risk": {"lqd": {"dts": 630.0, "dv01": 8400.0, "dv01_5": 7258.0, "dv01_30": 1142.0, "svar_10d": 0.748, "scvar_10d": 1.277, "mdd": -4.4}, "hyg": {"dts": 1139.8, "dv01": 4100.0, "dv01_2": 1230.0, "dv01_5": 2870.0, "svar_10d": 1.542, "scvar_10d": 2.798, "mdd": -5.02}, "corr": 0.845, "port_var_60_40": 1.025, "divers_benefit": 0.04, "var_curve_x": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100], "var_curve_y": [1.543, 1.498, 1.452, 1.407, 1.363, 1.318, 1.276, 1.232, 1.189, 1.147, 1.106, 1.065, 1.025, 0.986, 0.948, 0.911, 0.875, 0.841, 0.808, 0.778, 0.748], "var_naive_y": [1.542, 1.503, 1.463, 1.423, 1.384, 1.344, 1.304, 1.264, 1.225, 1.185, 1.145, 1.106, 1.066, 1.026, 0.987, 0.947, 0.907, 0.867, 0.828, 0.788, 0.748], "rolling_lqd_dts": [697.2, 697.2, 688.8, 672.0, 688.8, 705.6, 672.0, 680.4, 739.2, 747.6, 789.6, 772.8, 789.6, 957.6, 991.2, 932.4, 873.6, 890.4, 856.8, 781.2, 781.2, 764.4, 730.8, 739.2, 739.2, 739.2, 672.0, 697.2, 672.0, 655.2, 688.8, 672.0, 630.0, 646.8, 672.0, 663.6, 646.8, 621.6, 630.0, 630.0, 680.4, 672.0, 646.8, 672.0, 705.6, 697.2, 722.4, 688.8, 663.6, 672.0, 672.0, 663.6, 663.6, 655.2, 630.0, 613.2, 621.6, 638.4, 663.6, 655.2, 714.0, 705.6, 781.2, 739.2, 764.4, 722.4, 688.8, 672.0, 672.0, 680.4, 663.6, 630.0, 621.6, 613.2, 621.6, 630.0], "rolling_hyg_dts": [1152.1, 1152.1, 1082.4, 1066.0, 1098.8, 1094.7, 1074.2, 1139.8, 1176.7, 1217.7, 1332.5, 1316.1, 1422.7, 1824.5, 1746.6, 1648.2, 1504.7, 1476.0, 1447.3, 1295.6, 1394.0, 1357.1, 1266.9, 1303.8, 1283.3, 1238.2, 1148.0, 1217.7, 1201.3, 1164.4, 1283.3, 1205.4, 1180.8, 1180.8, 1156.2, 1160.3, 1143.9, 1115.2, 1127.5, 1148.0, 1303.8, 1246.4, 1180.8, 1205.4, 1291.5, 1258.7, 1307.9, 1209.5, 1168.5, 1193.1, 1189.0, 1172.6, 1160.3, 1123.4, 1086.5, 1098.8, 1148.0, 1176.7, 1209.5, 1172.6, 1271.0, 1283.3, 1344.8, 1328.4, 1402.2, 1283.3, 1205.4, 1160.3, 1172.6, 1135.7, 1152.1, 1148.0, 1123.4, 1115.2, 1131.6, 1139.8], "lqd_dd": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.55, -0.875, 0.0, 0.0, 0.0, -3.776, -1.645, -0.401, -0.821, -1.017, -0.676, -0.898, 0.0, -0.857, 0.0, 0.0, 0.0, -0.045, -0.679, -0.165, 0.0, 0.0, -0.293, 0.0, 0.0, 0.0, 0.0, 0.0, -0.098, -0.69, -0.241, -0.054, 0.0, 0.0, -0.97, -0.958, -1.33, -0.592, 0.0, -0.732, -1.007, -0.522, -0.191, -0.589, -0.44, -0.614, -0.488, -0.175, -0.011, 0.0, -0.148, 0.0, -1.482, -3.332, -3.882, -4.404, -3.347, -2.579, -1.58, -2.093, -2.858, -2.583, -4.037, -3.882, -2.641, -3.776, -2.931], "hyg_dd": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.23, 0.0, -0.442, -1.474, -0.823, -1.619, -4.389, -5.017, -3.212, -1.392, -1.195, -1.062, 0.0, -0.92, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.722, -0.311, 0.0, -0.262, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -0.287, -0.177, -1.309, -0.359, 0.0, -0.539, -1.079, -0.902, -0.777, 0.0, 0.0, -0.144, 0.0, 0.0, 0.0, 0.0, 0.0, -0.054, -0.165, -0.203, 0.0, 0.0, -0.319, -1.12, -2.213, -2.489, -3.209, -1.669, -0.584, 0.0, -0.299, -0.202, -0.252, -0.988, -0.684, 0.0, -0.714, -0.197], "rc_lqd_60": 0.453, "rc_hyg_60": 0.547, "notional": "10M"}, "source": "FRED OAS + US Treasury par yields", "series_sources": {"LQD OAS (BAMLC0A0CM)": "FRED", "HYG OAS (BAMLH0A0HYM2)": "FRED", "2y yield (UST 2 Yr)": "US Treasury", "5y yield (UST 5 Yr)": "US Treasury", "10y yield (UST 10 Yr)": "US Treasury", "30y yield (UST 30 Yr)": "US Treasury"}, "data_start": "2025-01-10", "data_end": "2026-06-12", "generated": "2026-06-14 19:43", "n_periods": 75, "pca": {"tenors": [2, 5, 10, 30], "vec_level": [0.4748, 0.5664, 0.5208, 0.4273], "vec_slope": [-0.6309, -0.2425, 0.2793, 0.6821], "vec_curv": [0.6059, -0.6178, -0.2411, 0.4395], "var": [0.9184, 0.0726, 0.0072, 0.0018], "beta_lqd": {"level": 4.599, "slope": -0.98, "curv": -3.981, "resid": 4.002}, "beta_hyg": {"level": 2.209, "slope": -1.472, "curv": -1.028, "resid": 1.283}}};
+let wLQD=0.60, wHYG=0.40, currentTab='cum';
+
+function sum(arr,k){return arr.reduce((a,b)=>a+b[k],0);}
+
+function getTotals(){
+  const KEYS=['spread','carry','rate','rate_near','rate_far',
+              'rate_level','rate_slope','rate_curv','rate_resid','convexity'];
+  const L={},H={};
+  KEYS.forEach(k=>{L[k]=sum(DATA.lqd,k);H[k]=sum(DATA.hyg,k);});
+  const mk=(o,w)=>{const r={};KEYS.forEach(k=>r[k]=w*o[k]);
+    r.total=w*(o.spread+o.carry+o.rate+o.convexity);return r;};
+  const wl=mk(L,wLQD), wh=mk(H,wHYG), port={};
+  Object.keys(wl).forEach(k=>port[k]=wl[k]+wh[k]);
+  return {wlqd:wl, whyg:wh, port:port};
+}
+
+function makeBar(id,label,val,color,small){
+  const h=small?3:4;
+  const pct=Math.min(100,Math.abs(val)/3*100);
+  const vc=val>=0?'var(--pos)':'var(--neg)';
+  const sign=val>=0?'+':'';
+  document.getElementById(id).innerHTML=
+    '<div class="ab-row"><span style="font-size:'+(small?'11':'12')+'px;color:var(--t2)">'+label+'</span>'+
+    '<span style="color:'+vc+';font-size:'+(small?'11':'12')+'px">'+sign+val.toFixed(2)+'%</span></div>'+
+    '<div class="ab-track" style="height:'+h+'px">'+
+    '<div class="ab-fill" style="width:'+pct+'%;background:'+color+'"></div></div>';
+}
+
+function updateCards(t){
+  document.getElementById('lqdPct').textContent=Math.round(wLQD*100)+'%';
+  document.getElementById('hygPct').textContent=Math.round(wHYG*100)+'%';
+  makeBar('lqd-a-spread',   'Spread',              t.wlqd.spread,    'var(--spread)');
+  makeBar('lqd-a-carry',    'Carry',               t.wlqd.carry,     'var(--carry)');
+  makeBar('lqd-a-rate',     'Rate (total)',         t.wlqd.rate,      'var(--rate)');
+  makeBar('lqd-a-rate-near','  ↳ 5y node',          t.wlqd.rate_near, 'var(--rate2)',true);
+  makeBar('lqd-a-rate-far', '  ↳ 30y node',         t.wlqd.rate_far,  '#9080FF',    true);
+  makeBar('lqd-a-convex',   'Convexity',            t.wlqd.convexity, 'var(--convex)');
+  makeBar('hyg-a-spread',   'Spread',              t.whyg.spread,    'var(--spread)');
+  makeBar('hyg-a-carry',    'Carry',               t.whyg.carry,     'var(--carry)');
+  makeBar('hyg-a-rate',     'Rate (total)',         t.whyg.rate,      'var(--rate)');
+  makeBar('hyg-a-rate-near','  ↳ 2y node',          t.whyg.rate_near, 'var(--rate2)',true);
+  makeBar('hyg-a-rate-far', '  ↳ 5y node',          t.whyg.rate_far,  '#9080FF',    true);
+  makeBar('hyg-a-convex',   'Convexity',            t.whyg.convexity, 'var(--convex)');
+}
+
+function updateMetrics(t){
+  const N=DATA.lqd_oas.length;
+  const oasNow=wLQD*DATA.lqd_oas[N-1]+wHYG*DATA.hyg_oas[N-1];
+  const oasChg=oasNow-(wLQD*DATA.lqd_oas[0]+wHYG*DATA.hyg_oas[0]);
+  const items=[
+    {l:'Portfolio total',   v:(t.port.total>=0?'+':'')+t.port.total.toFixed(2)+'%',      s:'All components',   p:t.port.total>=0},
+    {l:'Wtd avg OAS',       v:oasNow.toFixed(0)+' bp',
+     s:(oasChg>=0?'+':'')+oasChg.toFixed(0)+' bp vs start',                              p:oasChg<0},
+    {l:'Spread contrib',    v:(t.port.spread>=0?'+':'')+t.port.spread.toFixed(2)+'%',    s:'−Dur × ΔOAS',      p:t.port.spread>=0},
+    {l:'Rate contrib',      v:(t.port.rate>=0?'+':'')+t.port.rate.toFixed(2)+'%',        s:'KRD near+far',     p:t.port.rate>=0},
+    {l:'  Near node',       v:(t.port.rate_near>=0?'+':'')+t.port.rate_near.toFixed(2)+'%', s:'LQD:5y  HYG:2y', p:t.port.rate_near>=0},
+    {l:'  Far node',        v:(t.port.rate_far>=0?'+':'')+t.port.rate_far.toFixed(2)+'%',   s:'LQD:30y HYG:5y', p:t.port.rate_far>=0},
+    {l:'Carry',             v:'+'+t.port.carry.toFixed(2)+'%',                           s:'Coupon income',    p:true},
+    {l:'Convexity',         v:(t.port.convexity>=0?'+':'')+t.port.convexity.toFixed(2)+'%', s:'½·C·(Δr̄+ΔOAS)²', p:t.port.convexity>=0},
+  ];
+  document.getElementById('metrics').innerHTML=items.map(function(m){
+    return '<div class="mc">'+
+      '<div class="mc-lbl">'+m.l+'</div>'+
+      '<div class="mc-val '+(m.p?'pos':'neg')+'">'+m.v+'</div>'+
+      '<div class="mc-sub '+(m.p?'pos':'neg')+'">'+m.s+'</div>'+
+      '</div>';
+  }).join('');
+}
+
+function updateTable(t){
+  const rows=[
+    {c:'Rate contribution', f:'KRD×Δr near+far', lqd:t.wlqd.rate,      hyg:t.whyg.rate,      p:t.port.rate,      sub:true},
+    {c:'  Near node',       f:'LQD:−KRD₅×Δr₅ / HYG:−KRD₂×Δr₂',
+                                                  lqd:t.wlqd.rate_near, hyg:t.whyg.rate_near, p:t.port.rate_near, sub:false, indent:true},
+    {c:'  Far node',        f:'LQD:−KRD₃₀×Δr₃₀ / HYG:−KRD₅×Δr₅',
+                                                  lqd:t.wlqd.rate_far,  hyg:t.whyg.rate_far,  p:t.port.rate_far,  sub:false, indent:true},
+    {c:'Spread contribution',f:'−Dur × ΔOAS',    lqd:t.wlqd.spread,    hyg:t.whyg.spread,    p:t.port.spread},
+    {c:'Carry',              f:'coupon ÷ 52',     lqd:t.wlqd.carry,     hyg:t.whyg.carry,     p:t.port.carry},
+    {c:'Convexity',          f:'½·C·(Δr̄+ΔOAS)²', lqd:t.wlqd.convexity, hyg:t.whyg.convexity, p:t.port.convexity},
+    {c:'Total return',       f:'Sum',             lqd:t.wlqd.total,     hyg:t.whyg.total,     p:t.port.total,     total:true},
+  ];
+  const topSep='border-top:.5px solid rgba(255,255,255,.08);';
+  document.getElementById('summaryTbody').innerHTML=rows.map((r,i)=>{
+    const s=r.total?topSep:'';
+    const dim=r.indent?'color:var(--t2);font-size:11px;':'';
+    const c=v=>v>=0?'var(--pos)':'var(--neg)';
+    const f=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+    const pl=r.indent?'padding-left:20px;':'';
+    return '<tr>'+
+      '<td style="'+s+dim+pl+'">'+r.c+'</td>'+
+      '<td class="mono" style="'+s+dim+'">'+r.f+'</td>'+
+      '<td style="color:'+c(r.lqd)+';'+s+dim+'">'+f(r.lqd)+'</td>'+
+      '<td style="color:'+c(r.hyg)+';'+s+dim+'">'+f(r.hyg)+'</td>'+
+      '<td style="color:'+c(r.p)+';'+s+'">'+f(r.p)+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+const C={rate:'#534AB7',rate2:'#8B80E0',spread:'#1D9E75',carry:'#BA7517',convex:'#9E3D9E',total:'#888',ig:'#185FA5',hy:'#993C1D'};
+
+function getLY() {
+  const dark = document.documentElement.getAttribute('data-theme') !== 'light';
+  return {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{l:44,r:20,t:10,b:40},
+    font:{family:'-apple-system,sans-serif',size:11,color:dark?'#8b90a0':'#5a6070'},
+    xaxis:{showgrid:false,tickcolor:'transparent',linecolor:dark?'rgba(255,255,255,.08)':'rgba(0,0,0,.1)'},
+    yaxis:{gridcolor:dark?'rgba(255,255,255,.05)':'rgba(0,0,0,.06)',
+           tickcolor:'transparent',linecolor:dark?'rgba(255,255,255,.08)':'rgba(0,0,0,.1)'},
+    legend:{bgcolor:'transparent'},hovermode:'x unified',
+  };
+}
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const isDark = html.getAttribute('data-theme') === 'dark';
+  html.setAttribute('data-theme', isDark ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isDark ? '🌙 Dark' : '☀ Light';
+  // Redraw all active charts with new theme
+  redraw();
+  if(currentRiskTab !== 'snapshot') {
+    if(currentRiskTab==='portvar') buildPortVarChart();
+    else if(currentRiskTab==='dts') buildDTSChart();
+    else buildDrawdownChart();
+  }
+}
+
+function buildPortVarChart() {
+  const R = DATA.risk;
+  // Current weight position
+  const curX = Math.round(wLQD * 100);
+  const curY = R.var_curve_y[Math.round(curX/5)] || R.port_var_60_40;
+
+  Plotly.newPlot('riskChart',[
+    {x:R.var_curve_x, y:R.var_naive_y, name:'Naive (no diversif.)', mode:'lines',
+     line:{color:'#888',width:1.5,dash:'dot'},
+     hovertemplate:'LQD %{x}%: %{y:.2f}%<extra>No diversification</extra>'},
+    {x:R.var_curve_x, y:R.var_curve_y, name:'Portfolio VaR (with corr)', mode:'lines',
+     line:{color:C.rate,width:2},
+     fill:'tonexty', fillcolor:'rgba(83,74,183,.08)',
+     hovertemplate:'LQD %{x}%: %{y:.2f}%<extra>With correlation</extra>'},
+    {x:[curX], y:[curY], name:'Current weights', mode:'markers',
+     marker:{color:C.ig,size:10,symbol:'circle'},
+     hovertemplate:'LQD '+curX+'%: '+curY.toFixed(2)+'%<extra>Current</extra>'},
+  ],{...getLY(),
+    xaxis:{...getLY().xaxis,title:{text:'LQD weight (%)',font:{size:11}},ticksuffix:'%'},
+    yaxis:{...getLY().yaxis,ticksuffix:'%',title:{text:'10-day Spread VaR (95%)',font:{size:11}}},
+    annotations:[{
+      x:curX, y:curY, xref:'x', yref:'y',
+      text:'  '+curX+'/'+Math.round(wHYG*100)+' split<br>  VaR='+curY.toFixed(2)+'%<br>  Div benefit='+R.divers_benefit.toFixed(2)+'%',
+      showarrow:true, arrowhead:2, arrowcolor:C.ig,
+      font:{size:11,color:C.ig}, bgcolor:'transparent', bordercolor:'transparent', ax:40, ay:-40,
+    }],
+  },{responsive:true,displayModeBar:false});
+}
+
+function mkLine(name,x,y,color,dash,width){
+  return{x,y,name,mode:'lines',line:{color,width:width||1.5,dash:dash||'solid'},
+    hovertemplate:'%{y:.2f}%<extra>'+name+'</extra>'};
+}
+function mkBar(name,x,y,color){
+  return{x,y,name,type:'bar',marker:{color},hovertemplate:'%{y:.3f}%<extra>'+name+'</extra>'};
+}
+
+function buildCumChart(){
+  let cr=0,crn=0,crf=0,cs=0,cc=0,cx=0,ct=0;
+  const R=[],RN=[],RF=[],S=[],Ca=[],X=[],T=[];
+  DATA.lqd.forEach((_,i)=>{
+    cr+=wLQD*DATA.lqd[i].rate+wHYG*DATA.hyg[i].rate;
+    crn+=wLQD*DATA.lqd[i].rate_near+wHYG*DATA.hyg[i].rate_near;
+    crf+=wLQD*DATA.lqd[i].rate_far+wHYG*DATA.hyg[i].rate_far;
+    cs+=wLQD*DATA.lqd[i].spread+wHYG*DATA.hyg[i].spread;
+    cc+=wLQD*DATA.lqd[i].carry+wHYG*DATA.hyg[i].carry;
+    cx+=wLQD*DATA.lqd[i].convexity+wHYG*DATA.hyg[i].convexity;
+    ct+=wLQD*DATA.lqd[i].total+wHYG*DATA.hyg[i].total;
+    R.push(+cr.toFixed(3));RN.push(+crn.toFixed(3));RF.push(+crf.toFixed(3));
+    S.push(+cs.toFixed(3));Ca.push(+cc.toFixed(3));X.push(+cx.toFixed(3));T.push(+ct.toFixed(3));
+  });
+  Plotly.newPlot('chartDiv',[
+    // Main components — solid medium lines
+    {x:DATA.labels,y:R, name:'Rate (total)', mode:'lines',
+     line:{color:C.rate,  width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Rate total</extra>'},
+    {x:DATA.labels,y:S, name:'Spread',       mode:'lines',
+     line:{color:C.spread,width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Spread</extra>'},
+    {x:DATA.labels,y:Ca,name:'Carry',        mode:'lines',
+     line:{color:C.carry, width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Carry</extra>'},
+    {x:DATA.labels,y:X, name:'Convexity',    mode:'lines',
+     line:{color:C.convex,width:1.8,dash:'solid'}, hovertemplate:'%{y:.2f}%<extra>Convexity</extra>'},
+    // KRD sub-components — thin dashed lines
+    {x:DATA.labels,y:RN,name:'Rate near node',mode:'lines',
+     line:{color:C.rate2, width:0.9,dash:'dot'},     opacity:0.8,
+     hovertemplate:'%{y:.2f}%<extra>Rate near</extra>'},
+    {x:DATA.labels,y:RF,name:'Rate far node', mode:'lines',
+     line:{color:'#9080FF',width:0.9,dash:'dashdot'}, opacity:0.8,
+     hovertemplate:'%{y:.2f}%<extra>Rate far</extra>'},
+    // Total — bold solid white-ish
+    {x:DATA.labels,y:T, name:'Total',         mode:'lines',
+     line:{color:'#d0d4e0',width:2.5,dash:'solid'},
+     hovertemplate:'%{y:.2f}%<extra>Total</extra>'},
+  ],{...getLY(),yaxis:{...getLY().yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+function buildWeeklyChart(){
+  const pR=[],pS=[],pC=[],pX=[];
+  DATA.lqd.forEach((_,i)=>{
+    pR.push(+(wLQD*DATA.lqd[i].rate+wHYG*DATA.hyg[i].rate).toFixed(4));
+    pS.push(+(wLQD*DATA.lqd[i].spread+wHYG*DATA.hyg[i].spread).toFixed(4));
+    pC.push(+(wLQD*DATA.lqd[i].carry+wHYG*DATA.hyg[i].carry).toFixed(4));
+    pX.push(+(wLQD*DATA.lqd[i].convexity+wHYG*DATA.hyg[i].convexity).toFixed(4));
+  });
+  Plotly.newPlot('chartDiv',[
+    mkBar('Rate',      DATA.labels,pR,'rgba(83,74,183,.75)'),
+    mkBar('Spread',    DATA.labels,pS,'rgba(29,158,117,.75)'),
+    mkBar('Carry',     DATA.labels,pC,'rgba(186,117,23,.75)'),
+    mkBar('Convexity', DATA.labels,pX,'rgba(158,61,158,.75)'),
+  ],{...getLY(),barmode:'stack',yaxis:{...getLY().yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+function buildOASChart(){
+  Plotly.newPlot('chartDiv',[
+    {x:DATA.oas_dates,y:DATA.lqd_oas,name:'LQD OAS',mode:'lines',
+     line:{color:C.ig,width:1.5},hovertemplate:'%{y:.0f} bp<extra>LQD</extra>'},
+    {x:DATA.oas_dates,y:DATA.hyg_oas,name:'HYG OAS',mode:'lines',
+     line:{color:C.hy,width:1.5},yaxis:'y2',hovertemplate:'%{y:.0f} bp<extra>HYG</extra>'},
+  ],{...getLY(),
+    yaxis:{...getLY().yaxis,title:{text:'LQD OAS (bp)',font:{color:C.ig,size:11}}},
+    yaxis2:{overlaying:'y',side:'right',gridcolor:'transparent',tickcolor:'transparent',
+            linecolor:'rgba(255,255,255,.08)',title:{text:'HYG OAS (bp)',font:{color:C.hy,size:11}}},
+  },{responsive:true,displayModeBar:false});
+}
+
+function buildCurveChart(){
+  const traces=[];
+  if(DATA.r2) traces.push({x:DATA.oas_dates,y:DATA.r2,name:'2y yield',mode:'lines',
+    line:{color:'#4A9EFF',width:1.5},hovertemplate:'%{y:.2f}%<extra>2y</extra>'});
+  if(DATA.r5) traces.push({x:DATA.oas_dates,y:DATA.r5,name:'5y yield',mode:'lines',
+    line:{color:C.rate,width:1.5},hovertemplate:'%{y:.2f}%<extra>5y</extra>'});
+  if(DATA.r10) traces.push({x:DATA.oas_dates,y:DATA.r10,name:'10y yield',mode:'lines',
+    line:{color:'#46b8a4',width:1.5},hovertemplate:'%{y:.2f}%<extra>10y</extra>'});
+  if(DATA.r30) traces.push({x:DATA.oas_dates,y:DATA.r30,name:'30y yield',mode:'lines',
+    line:{color:'#E05050',width:1.5},hovertemplate:'%{y:.2f}%<extra>30y</extra>'});
+  Plotly.newPlot('chartDiv',traces,
+    {...getLY(),yaxis:{...getLY().yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+// ── Risk panel ────────────────────────────────────────────────────────────────
+let currentRiskTab = 'snapshot';
+
+function portRisk(w_lqd, w_hyg) {
+  const R = DATA.risk;
+  const dts   = w_lqd*R.lqd.dts   + w_hyg*R.hyg.dts;
+  const dv01  = w_lqd*R.lqd.dv01  + w_hyg*R.hyg.dv01;
+  const svar  = w_lqd*R.lqd.svar_10d  + w_hyg*R.hyg.svar_10d;
+  const scvar = w_lqd*R.lqd.scvar_10d + w_hyg*R.hyg.scvar_10d;
+  const rc_lqd = w_lqd*R.lqd.dts / (w_lqd*R.lqd.dts + w_hyg*R.hyg.dts + 1e-10);
+  return { dts, dv01, svar, scvar, rc_lqd: rc_lqd*100, rc_hyg: (1-rc_lqd)*100 };
+}
+
+function updateRiskPanel() {
+  const R = DATA.risk;
+  const p = portRisk(wLQD, wHYG);
+
+  // Metric cards
+  const cards = [
+    { l:'Portfolio DTS',       v:p.dts.toFixed(0)+' bp·yr', s:'Duration × OAS' },
+    { l:'Portfolio DV01',      v:'$'+p.dv01.toFixed(0),     s:'Per $1M notional' },
+    { l:'Spread VaR (10d 95%)',v:p.svar.toFixed(2)+'%',     s:'Historical simulation' },
+    { l:'Spread CVaR (10d)',   v:p.scvar.toFixed(2)+'%',    s:'Expected shortfall' },
+    { l:'IG risk contrib',     v:p.rc_lqd.toFixed(1)+'%',   s:'DTS-weighted' },
+    { l:'HY risk contrib',     v:p.rc_hyg.toFixed(1)+'%',   s:'DTS-weighted' },
+  ];
+  document.getElementById('riskCards').innerHTML = cards.map(function(c){
+    return '<div class="rc">'+
+      '<div class="rc-lbl">'+c.l+'</div>'+
+      '<div class="rc-val">'+c.v+'</div>'+
+      '<div class="rc-sub">'+c.s+'</div>'+
+      '</div>';
+  }).join('');
+
+  // Risk contribution bar
+  document.getElementById('riskCards').innerHTML +=
+    '<div class="rc" style="grid-column:1/-1">'+
+      '<div class="rc-lbl">Risk contribution split (DTS-weighted) — IG vs HY</div>'+
+      '<div style="display:flex;gap:8px;align-items:center;margin-top:6px">'+
+        '<span style="font-size:12px;color:var(--ig);width:40px">'+p.rc_lqd.toFixed(1)+'%</span>'+
+        '<div style="flex:1;height:10px;background:var(--bg3);border-radius:5px;overflow:hidden">'+
+          '<div style="width:'+p.rc_lqd+'%;height:100%;background:linear-gradient(90deg,var(--ig),var(--hy));border-radius:5px"></div>'+
+        '</div>'+
+        '<span style="font-size:12px;color:var(--hy);width:40px;text-align:right">'+p.rc_hyg.toFixed(1)+'%</span>'+
+      '</div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:2px">'+
+        '<span>LQD (IG)</span><span>HYG (HY)</span>'+
+      '</div>'+
+    '</div>';
+
+  // Risk table
+  const rows = [
+    { m:'DTS',               f:'Dur × OAS',           lqd:R.lqd.dts.toFixed(0)+' bp·yr',  hyg:R.hyg.dts.toFixed(0)+' bp·yr',  port:p.dts.toFixed(0)+' bp·yr' },
+    { m:'DV01 (total)',      f:'Dur × 0.0001 × $10M', lqd:'$'+R.lqd.dv01.toLocaleString(), hyg:'$'+R.hyg.dv01.toLocaleString(), port:'$'+p.dv01.toFixed(0) },
+    { m:'  DV01 near node',  f:'KRD_near × 0.0001',   lqd:'$'+R.lqd.dv01_5+' (5y)',       hyg:'$'+R.hyg.dv01_2+' (2y)',        port:'—', indent:true },
+    { m:'  DV01 far node',   f:'KRD_far × 0.0001',    lqd:'$'+R.lqd.dv01_30+' (30y)',     hyg:'$'+R.hyg.dv01_5+' (5y)',        port:'—', indent:true },
+    { m:'Spread VaR 10d 95%',f:'Hist sim √(10/5)',    lqd:R.lqd.svar_10d.toFixed(2)+'%',  hyg:R.hyg.svar_10d.toFixed(2)+'%',  port:R.port_var_60_40.toFixed(2)+'%' },
+    { m:'Spread CVaR 10d',   f:'E[loss | > VaR]',     lqd:R.lqd.scvar_10d.toFixed(2)+'%', hyg:R.hyg.scvar_10d.toFixed(2)+'%', port:p.scvar.toFixed(2)+'%' },
+    { m:'Correlation',       f:'LQD-HYG spread P&L',  lqd:'—',                             hyg:'—',                             port:R.corr.toFixed(3) },
+    { m:'Diversif. benefit', f:'Naive − portfolio VaR',lqd:'—',                             hyg:'—',                             port:R.divers_benefit.toFixed(2)+'%' },
+    { m:'Max drawdown',      f:'Peak-to-trough',       lqd:R.lqd.mdd.toFixed(2)+'%',       hyg:R.hyg.mdd.toFixed(2)+'%',       port:'—' },
+  ];
+  const sep='border-top:.5px solid rgba(255,255,255,.08);';
+  document.getElementById('riskTbody').innerHTML = rows.map((r,i)=>{
+    const dim = r.indent ? 'color:var(--t2);font-size:11px;' : '';
+    const pl  = r.indent ? 'padding-left:18px;' : '';
+    return '<tr>'+
+      '<td style="'+dim+pl+'">'+r.m+'</td>'+
+      '<td class="mono" style="'+dim+'">'+r.f+'</td>'+
+      '<td style="'+dim+'">'+r.lqd+'</td>'+
+      '<td style="'+dim+'">'+r.hyg+'</td>'+
+      '<td>'+r.port+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+function buildDTSChart() {
+  const R = DATA.risk;
+  const portDTS = DATA.risk.rolling_lqd_dts.map((v,i)=>
+    +(wLQD*v + wHYG*R.rolling_hyg_dts[i]).toFixed(1));
+  Plotly.newPlot('riskChart',[
+    {x:DATA.oas_dates, y:R.rolling_lqd_dts, name:'LQD DTS', mode:'lines',
+     line:{color:C.ig,width:1.5}, hovertemplate:'%{y:.0f} bp·yr<extra>LQD</extra>'},
+    {x:DATA.oas_dates, y:R.rolling_hyg_dts, name:'HYG DTS', mode:'lines',
+     line:{color:C.hy,width:1.5}, yaxis:'y2', hovertemplate:'%{y:.0f} bp·yr<extra>HYG</extra>'},
+    {x:DATA.oas_dates, y:portDTS, name:'Portfolio DTS', mode:'lines',
+     line:{color:'#d0d4e0',width:2,dash:'dash'}, hovertemplate:'%{y:.0f} bp·yr<extra>Portfolio</extra>'},
+  ],{...getLY(),
+    yaxis: {...getLY().yaxis,title:{text:'LQD DTS (bp·yr)',font:{color:C.ig,size:11}}},
+    yaxis2:{overlaying:'y',side:'right',gridcolor:'transparent',tickcolor:'transparent',
+            linecolor:'rgba(255,255,255,.08)',title:{text:'HYG DTS (bp·yr)',font:{color:C.hy,size:11}}},
+  },{responsive:true,displayModeBar:false});
+}
+
+function buildDrawdownChart() {
+  const R = DATA.risk;
+  const portDD = R.lqd_dd.map((v,i) => +(wLQD*v + wHYG*R.hyg_dd[i]).toFixed(3));
+  Plotly.newPlot('riskChart',[
+    {x:DATA.labels, y:R.lqd_dd, name:'LQD', mode:'lines', fill:'tozeroy',
+     line:{color:C.ig,width:1}, fillcolor:'rgba(24,95,165,.15)',
+     hovertemplate:'%{y:.2f}%<extra>LQD</extra>'},
+    {x:DATA.labels, y:R.hyg_dd, name:'HYG', mode:'lines', fill:'tozeroy',
+     line:{color:C.hy,width:1}, fillcolor:'rgba(153,60,29,.15)',
+     hovertemplate:'%{y:.2f}%<extra>HYG</extra>'},
+    {x:DATA.labels, y:portDD, name:'Portfolio', mode:'lines',
+     line:{color:'#d0d4e0',width:2,dash:'dash'},
+     hovertemplate:'%{y:.2f}%<extra>Portfolio</extra>'},
+  ],{...getLY(),yaxis:{...getLY().yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+function switchRisk(tab, btn) {
+  currentRiskTab = tab;
+  document.getElementById('riskSnapshot').style.display = 'none';
+  document.getElementById('riskChart').style.display    = 'none';
+
+  document.querySelectorAll('#riskPanel .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (tab === 'snapshot') {
+    document.getElementById('riskSnapshot').style.display = 'block';
+    updateRiskPanel();
+  } else {
+    document.getElementById('riskChart').style.display = 'block';
+    if      (tab === 'portvar') buildPortVarChart();
+    else if (tab === 'dts')     buildDTSChart();
+    else                        buildDrawdownChart();
+  }
+}
+
+const PCA_COL={level:'#e3a857',slope:'#46b8a4',curv:'#a87fd6'};
+let currentPcaTab='rate';
+
+function updatePcaCards(t){
+  const P=DATA.pca, bL=P.beta_lqd, bH=P.beta_hyg;
+  const pct=x=>(x*100).toFixed(1)+'%';
+  const sgn=x=>(x>=0?'+':'')+x.toFixed(2)+'%';
+  const cards=[
+    {l:'Variance explained',      v:pct(P.var[0])+' / '+pct(P.var[1])+' / '+pct(P.var[2]), s:'Level / Slope / Curv'},
+    {l:'LQD factor duration',     v:bL.level.toFixed(2)+' / '+bL.slope.toFixed(2)+' / '+bL.curv.toFixed(2), s:'L / S / C  (KRD·v)'},
+    {l:'HYG factor duration',     v:bH.level.toFixed(2)+' / '+bH.slope.toFixed(2)+' / '+bH.curv.toFixed(2), s:'short-dur → curv≈0'},
+    {l:'Portfolio rate · Level',  v:sgn(t.port.rate_level), s:'−β_L × score'},
+    {l:'Portfolio rate · Slope',  v:sgn(t.port.rate_slope), s:'−β_S × score'},
+    {l:'Portfolio rate · Curv',   v:sgn(t.port.rate_curv),  s:'−β_C × score'},
+  ];
+  document.getElementById('pcaCards').innerHTML=cards.map(c=>
+    '<div class="rc"><div class="rc-lbl">'+c.l+'</div>'+
+    '<div class="rc-val">'+c.v+'</div><div class="rc-sub">'+c.s+'</div></div>').join('');
+}
+
+function buildPcaRateChart(){
+  let cl=0,cs=0,cc=0,ct=0; const L=[],S=[],Cv=[],T=[];
+  DATA.lqd.forEach((_,i)=>{
+    cl+=wLQD*DATA.lqd[i].rate_level+wHYG*DATA.hyg[i].rate_level;
+    cs+=wLQD*DATA.lqd[i].rate_slope+wHYG*DATA.hyg[i].rate_slope;
+    cc+=wLQD*DATA.lqd[i].rate_curv +wHYG*DATA.hyg[i].rate_curv;
+    ct+=wLQD*DATA.lqd[i].rate      +wHYG*DATA.hyg[i].rate;
+    L.push(+cl.toFixed(3));S.push(+cs.toFixed(3));Cv.push(+cc.toFixed(3));T.push(+ct.toFixed(3));
+  });
+  Plotly.newPlot('pcaChart',[
+    {x:DATA.labels,y:L, name:'Level',     mode:'lines',line:{color:PCA_COL.level,width:1.8},hovertemplate:'%{y:.2f}%<extra>Level</extra>'},
+    {x:DATA.labels,y:S, name:'Slope',     mode:'lines',line:{color:PCA_COL.slope,width:1.8},hovertemplate:'%{y:.2f}%<extra>Slope</extra>'},
+    {x:DATA.labels,y:Cv,name:'Curvature', mode:'lines',line:{color:PCA_COL.curv, width:1.8},hovertemplate:'%{y:.2f}%<extra>Curvature</extra>'},
+    {x:DATA.labels,y:T, name:'Rate total',mode:'lines',line:{color:'#d0d4e0',width:2.4,dash:'dash'},hovertemplate:'%{y:.2f}%<extra>Rate total</extra>'},
+  ],{...getLY(),yaxis:{...getLY().yaxis,ticksuffix:'%'}},{responsive:true,displayModeBar:false});
+}
+
+function buildPcaShapesChart(){
+  const P=DATA.pca, x=P.tenors.map(t=>t+'y'), ly=getLY();
+  Plotly.newPlot('pcaChart',[
+    {x:x,y:P.vec_level,name:'Level',    mode:'lines+markers',line:{color:PCA_COL.level,width:2},marker:{size:7},hovertemplate:'%{y:.2f}<extra>Level</extra>'},
+    {x:x,y:P.vec_slope,name:'Slope',    mode:'lines+markers',line:{color:PCA_COL.slope,width:2},marker:{size:7},hovertemplate:'%{y:.2f}<extra>Slope</extra>'},
+    {x:x,y:P.vec_curv, name:'Curvature',mode:'lines+markers',line:{color:PCA_COL.curv, width:2},marker:{size:7},hovertemplate:'%{y:.2f}<extra>Curvature</extra>'},
+  ],{...ly,margin:{l:44,r:20,t:10,b:36},
+     xaxis:{...ly.xaxis,title:{text:'Maturity',font:{size:11}}},
+     yaxis:{...ly.yaxis,title:{text:'Eigenvector weight',font:{size:11}},zeroline:true,zerolinecolor:'rgba(128,128,128,.35)'}},
+   {responsive:true,displayModeBar:false});
+}
+
+function switchPca(tab,btn){
+  currentPcaTab=tab;
+  document.querySelectorAll('#pcaPanel .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('legPcaRate').style.display   = tab==='rate'  ?'flex':'none';
+  document.getElementById('legPcaShapes').style.display = tab==='shapes'?'flex':'none';
+  if(tab==='rate') buildPcaRateChart(); else buildPcaShapesChart();
+}
+
+function redraw() {
+  const t=getTotals();
+  updateCards(t);updateMetrics(t);updateTable(t);
+  updateRiskPanel();
+  updatePcaCards(t);
+  if(currentTab==='cum')buildCumChart();
+  else if(currentTab==='weekly')buildWeeklyChart();
+  else if(currentTab==='oas')buildOASChart();
+  else buildCurveChart();
+  if(currentPcaTab==='rate')buildPcaRateChart();else buildPcaShapesChart();
+}
+
+function onSlider(which,val){
+  const v=parseInt(val)/100;
+  if(which==='lqd'){wLQD=v;wHYG=Math.max(0,1-v);document.getElementById('hygSlider').value=Math.round(wHYG*100);}
+  else{wHYG=v;wLQD=Math.max(0,1-v);document.getElementById('lqdSlider').value=Math.round(wLQD*100);}
+  redraw();
+  if(currentRiskTab==='portvar') buildPortVarChart();
+  else if(currentRiskTab==='dts') buildDTSChart();
+  else if(currentRiskTab==='dd') buildDrawdownChart();
+}
+
+function switchTab(tab,btn){
+  currentTab=tab;
+  // Only affect attribution panel tabs
+  document.querySelectorAll('#attrPanel .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('legCum').style.display=(tab==='cum'||tab==='weekly')?'flex':'none';
+  document.getElementById('legOas').style.display=tab==='oas'?'flex':'none';
+  document.getElementById('legCurve').style.display=tab==='curve'?'flex':'none';
+  redraw();
+}
+
+function buildInfoPanel() {
+  const s = DATA.series_sources;
+  const rows = Object.entries(s).map(function(e) {
+    const isLive = e[1].includes('FRED') || e[1].includes('yfinance');
+    const color = e[1].includes('simulation') ? 'var(--carry)' : e[1].includes('yfinance') ? '#534AB7' : 'var(--pos)';
+    return '<tr>'+
+      '<td style="color:var(--t2);font-size:11px">'+e[0]+'</td>'+
+      '<td style="font-size:11px;color:'+color+'">'+e[1]+'</td>'+
+      '</tr>';
+  }).join('');
+
+  document.getElementById('infoPanel').innerHTML =
+    '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:10px">'+
+    '<thead><tr>'+
+    '<th style="font-size:11px;font-weight:500;color:var(--t2);text-align:left;padding:4px 8px;border-bottom:.5px solid var(--bdr)">Series</th>'+
+    '<th style="font-size:11px;font-weight:500;color:var(--t2);text-align:left;padding:4px 8px;border-bottom:.5px solid var(--bdr)">Source</th>'+
+    '</tr></thead><tbody>'+rows+'</tbody></table>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:16px;font-size:11px;color:var(--t3)">'+
+    '<span>Period: '+DATA.data_start+' – '+DATA.data_end+'</span>'+
+    '<span>Weekly periods: '+DATA.n_periods+'</span>'+
+    '<span>Generated: '+DATA.generated+'</span>'+
+    '<span>Framework: Campisi + KRD</span>'+
+    '<span>DV01 notional: $10M</span>'+
+    '</div>';
+}
+
+redraw();
+buildInfoPanel();
+</script>
+</body>
+</html>
